@@ -51,7 +51,7 @@ fn get_info(key:&str) -> Book{
             title:String::from("Twig"),
             start:String::from("twigserial.wordpress.com/2014/12/24/taking-root-1-1/")
         },
-        "glow-worm" => Book {
+        "glow" => Book {
             title:String::from("Glow-worm"),
             start:String::from("parahumans.wordpress.com/2017/10/21/glowworm-p-1/")
         },
@@ -78,7 +78,22 @@ fn interpet_args() {
             ::std::process::exit(64);
         }
     }
-    process_book(download_book(get_info(command.as_ref())));
+    if command == "help" {
+        print_help();
+    } else {
+        process_book(download_book(get_info(command.as_ref())));
+    }
+}
+fn print_help() {
+    println!("Rust Wildbow Scraper v0.0.1");
+    println!("By Nicohman");
+    println!("Commands:");
+    println!("help: Shows this help screen");
+    println!("worm: Scrapes Worm");
+    println!("pact: Scrapes Pact");
+    println!("twig: Scrapes Twig");
+    println!("glow: Scrapes Glow-worm");
+    println!("ward: Scrapes Ward");
 }
 fn download_book(book:Book) -> DownloadedBook {
     let elements = vec![BookElement::Name(book.title.clone()), BookElement::Author("John McCrae".to_string()), BookElement::Language("en-US".to_string()), BookElement::Date(DateTime::parse_from_rfc3339("2017-02-08T15:30:18+01:00").unwrap())];
@@ -91,9 +106,7 @@ fn download_book(book:Book) -> DownloadedBook {
         }
     }
     let done = download_iter(&mut ("https://".to_string()+ &book.start, elements, client));
-    if FILE_USE {
-        fs::remove_dir_all("content").unwrap();
-    }
+
     return DownloadedBook {
         title:book.title,
         content:done.1
@@ -103,13 +116,16 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let page = tup.2.get(&tup.0).send().unwrap().text().unwrap();
     let doc = Document::from(page.as_ref());
     let check = doc.find(Descendant(And(Name("div"), Class("entry-content")),Descendant(Name("p"),Name("a")))).filter(|x|{
-        if x.text().trim() == "Next Chapter" {
+        if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" {
             true
         } else {
             false
         }
     }).next();
-    let title = doc.find(Name("title")).next().unwrap().text().split("|").next().unwrap().trim().to_string();
+    let mut title = doc.find(Name("title")).next().unwrap().text().split("|").next().unwrap().trim().replace(" - Parahumans 2", "").replace(" – Twig","").replace("Glow-worm – ","").replace("(Sequel is live!)","").to_string();
+    if &title == "1.01" {
+        title = "Bonds 1.1".to_string();
+    }
     println!("Downloaded {}", title);
     let mut arr = doc.find(Descendant(And(Name("div"), Class("entry-content")),Name("p"))).skip(1).collect::<Vec<Node>>();
     let to_sp = arr.len() -1;
@@ -124,7 +140,7 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
             .open("content/".to_string()+&title.clone())
             .unwrap();
         file.write_all(content.as_bytes()).unwrap();
-        tup.1.push(BookElement::Content(PathBuf::from(title.clone())));
+        tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&title.clone())));
     } else {
         tup.1.push(BookElement::StringContent(content));
     }
@@ -142,5 +158,8 @@ fn process_book(book: DownloadedBook) {
     let mut processed = EPubBook::from_elements(book.content).unwrap();
     processed.normalise_paths(&["./".parse().unwrap()], false, &mut stdout()).unwrap();
     processed.write_zip(&mut File::create(filename+".epub").unwrap(), true, &mut stdout()).expect("Couldn't export epub");
+    if FILE_USE {
+        fs::remove_dir_all("content").unwrap();
+    }
     println!("Done downloading {}", book.title);
 }
