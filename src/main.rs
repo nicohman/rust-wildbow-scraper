@@ -3,14 +3,19 @@ extern crate gen_epub_book;
 extern crate chrono;
 extern crate reqwest;
 use reqwest::Client;
+use std::path::PathBuf;
 use gen_epub_book::ops::{BookElement, EPubBook};
 use std::env;
+use std::io::Write;
+use std::fs;
 use std::fs::File;
 use select::document::Document;
 use std::io::stdout;
 use select::node::Node;
 use chrono::DateTime;
+use std::fs::OpenOptions;
 use select::predicate::{Name, And, Class, Descendant};
+const FILE_USE: bool = true;
 struct Book {
     title:String,
     start:String
@@ -73,20 +78,22 @@ fn interpet_args() {
             ::std::process::exit(64);
         }
     }
-    match command.as_ref() {
-        "worm" => process_book(download_book(get_info("worm"))),
-        "pact" => process_book(download_book(get_info("pact"))),
-        "twig" => process_book(download_book(get_info("twig"))),
-        "glow" => process_book(download_book(get_info("glow"))),
-        "ward" => process_book(download_book(get_info("ward"))),
-        _ => process_book(download_book(get_info("worm"))),
-
-    };
+    process_book(download_book(get_info(command.as_ref())));
 }
 fn download_book(book:Book) -> DownloadedBook {
     let elements = vec![BookElement::Name(book.title.clone()), BookElement::Author("John McCrae".to_string()), BookElement::Language("en-US".to_string()), BookElement::Date(DateTime::parse_from_rfc3339("2017-02-08T15:30:18+01:00").unwrap())];
     let client = Client::new();
+    if FILE_USE {
+        if !fs::metadata("content").is_err() {
+            println!("Content directory is already there. Please remove and try again.");
+        } else {
+            fs::create_dir("content").unwrap();
+        }
+    }
     let done = download_iter(&mut ("https://".to_string()+ &book.start, elements, client));
+    if FILE_USE {
+        fs::remove_dir_all("content").unwrap();
+    }
     return DownloadedBook {
         title:book.title,
         content:done.1
@@ -107,10 +114,20 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let mut arr = doc.find(Descendant(And(Name("div"), Class("entry-content")),Name("p"))).skip(1).collect::<Vec<Node>>();
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
-    let content = arr.into_iter().fold("<!-- ePub title: \"".to_string()+&title+"\" -->", |acc, x|{
+    let content = arr.into_iter().fold("<!-- ePub title: \"".to_string() +&title+ "\" -->\n<h1>"+&title+"</h1>", |acc, x|{
         acc + "<p>"+ &x.text()+"</p>"
     });
-    tup.1.push(BookElement::StringContent(content));
+    if FILE_USE {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open("content/".to_string()+&title.clone())
+            .unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        tup.1.push(BookElement::Content(PathBuf::from(title.clone())));
+    } else {
+        tup.1.push(BookElement::StringContent(content));
+    }
     if check.is_none() {
         return tup.clone();
     } else {
@@ -124,6 +141,6 @@ fn process_book(book: DownloadedBook) {
     println!("Converting to epub now at {}.epub", filename);
     let mut processed = EPubBook::from_elements(book.content).unwrap();
     processed.normalise_paths(&["./".parse().unwrap()], false, &mut stdout()).unwrap();
-    processed.write_zip(&mut File::create(filename+".epub").unwrap(), false, &mut stdout()).expect("Couldn't export epub");
+    processed.write_zip(&mut File::create(filename+".epub").unwrap(), true, &mut stdout()).expect("Couldn't export epub");
     println!("Done downloading {}", book.title);
 }
