@@ -49,7 +49,7 @@ fn get_info(key:&str) -> Book{
             start:String::from("parahumans.wordpress.com/2011/06/11/1-1/"),
             desc:String::from("An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons."),
             date:String::from("Tue, 19 Nov 2013 00:00:00 +0100"),
-            cover:Some("https://i.imgur.com/g0fLbQ1.jpg".to_string()),
+            cover:None,//Some("https://i.imgur.com/g0fLbQ1.jpg".to_string()),
         },
         "pact" => Book {
             title:String::from("Pact"),
@@ -133,7 +133,6 @@ fn download_book(book:Book) -> DownloadedBook {
         }
     }
     let done = download_iter(&mut ("https://".to_string()+ &book.start, elements, client));
-
     return DownloadedBook {
         title:book.title,
         content:done.1
@@ -157,17 +156,18 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let mut arr = doc.find(Descendant(And(Name("div"), Class("entry-content")),Name("p"))).skip(1).collect::<Vec<Node>>();
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
-    let content = arr.into_iter().fold("<!-- ePub title: \"".to_string() +&title+ "\" -->\n<h1>"+&title+"</h1>", |acc, x|{
-        acc + "<p>"+ &x.text()+"</p>"
+    let mut content = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html; charset='utf-8'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
+        acc + "<p>"+ &x.text()+"</p>\n"
     });
+    content = content + "</body>";
     if FILE_USE {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .open("content/".to_string()+&title.clone())
+            .open("content/".to_string()+&title.clone()+".html")
             .unwrap();
         file.write_all(content.as_bytes()).unwrap();
-        tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&title.clone())));
+        tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&title.clone()+".html")));
     } else {
         tup.1.push(BookElement::StringContent(content));
     }
