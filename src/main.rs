@@ -77,7 +77,7 @@ fn get_info(key:&str) -> Book{
             start:String::from("parahumans.net/2017/09/11/daybreak-1-1/"),
             desc:String::from("The unwritten rules that govern the fights and outright wars between ‘capes’ have been amended: everyone gets their second chance.  It’s an uneasy thing to come to terms with when notorious supervillains and even monsters are playing at being hero.  The world ended two years ago, and as humanity straddles the old world and the new, there aren’t records, witnesses, or facilities to answer the villains’ past actions in the present.  One of many compromises, uneasy truces and deceptions that are starting to splinter as humanity rebuilds. None feel the injustice of this new status quo or the lack of established footing more than the past residents of the parahuman asylums.  The facilities hosted parahumans and their victims, but the facilities are ruined or gone; one of many fragile ex-patients is left to find a place in a fractured world.  She’s perhaps the person least suited to have anything to do with this tenuous peace or to stand alongside these false heroes.  She’s put in a position to make the decision: will she compromise to help forge what they call, with dark sentiment, a second golden age?  Or will she stand tall as a gilded dark age dawns?"),
             date:String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
-            cover:None,
+            cover:Some("https://demenses.net/cdn/883d4f706e3267a540585e86dec494f8f1ea3f05.jpg"),
         },
         _ =>  Book {
             title:String::from("Worm"),
