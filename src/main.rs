@@ -8,6 +8,7 @@ use url::Url;
 use std::path::PathBuf;
 use gen_epub_book::ops::{BookElement, EPubBook};
 use std::env;
+use std::io;
 use std::io::Write;
 use std::fs;
 use std::fs::File;
@@ -18,6 +19,7 @@ use chrono::DateTime;
 use std::fs::OpenOptions;
 use select::predicate::{Name, And, Class, Descendant};
 const FILE_USE: bool = true;
+const BOOKS: [&str;5] = ["worm","pact","twig","glow","ward"];
 struct Book {
     title:String,
     start:String,
@@ -89,6 +91,15 @@ fn get_info(key:&str) -> Book{
 
     };
 }
+fn prompt_cover(title:String, url:String) -> bool {
+    print!("Would you like to include a cover for {}? Cover URL is {}. If it cannot be downloaded, program will not exit gracefully.(y/n)",title,url);
+    io::stdout().flush().ok().expect("Could not flush stdout");
+    let reader = io::stdin();
+
+    let mut buf = String::new();
+    (reader).read_line(&mut buf).unwrap();
+    buf == "y".to_string() || buf== "yes".to_string()
+}
 fn interpet_args() {
     let args: Vec<String> = env::args().collect();
     let command : &str;
@@ -101,10 +112,18 @@ fn interpet_args() {
             ::std::process::exit(64);
         }
     }
-    if command == "help" {
-        print_help();
-    } else {
-        process_book(download_book(get_info(command.as_ref())));
+    match command {
+        "help" => print_help(),
+        "all" => gen_all(),
+        _ => process_book(download_book(get_info(command.as_ref())))
+    }
+    
+}
+fn gen_all() {
+    for book in BOOKS.iter() {
+        let info = get_info(book);
+        println!("Now downloading {}",info.title);
+        process_book(download_book(info));
     }
 }
 fn print_help() {
@@ -121,7 +140,10 @@ fn print_help() {
 fn download_book(book:Book) -> DownloadedBook {
     let mut elements = vec![BookElement::Name(book.title.clone()), BookElement::Author("John McCrae".to_string()), BookElement::Language("en-US".to_string()), BookElement::Date(DateTime::parse_from_rfc2822(&book.date).unwrap()), BookElement::StringDescription(book.desc)];
     if book.cover.is_some() {
-        elements.push(BookElement::NetworkCover(Url::parse(&book.cover.unwrap()).unwrap()));
+        let cover = book.cover.unwrap();
+        if prompt_cover(book.title.clone(),cover.clone()) {
+        elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
+        }
     }
     let client = Client::new();
     if FILE_USE {
