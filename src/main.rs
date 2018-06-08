@@ -179,7 +179,7 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
     let mut content = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","\n").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
     });
     let num = tup.1.len().clone().to_string();
     content = content + "</body></html>";
