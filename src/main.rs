@@ -178,21 +178,20 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let mut arr = doc.find(Descendant(And(Name("div"), Class("entry-content")),Name("p"))).skip(1).collect::<Vec<Node>>();
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
-    let mut content = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
-    });
-    let num = tup.1.len().clone().to_string();
-    content = content + "</body></html>";
+     let num = tup.1.len().clone().to_string();
     if FILE_USE {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .open("content/".to_string()+&num+".html")
             .unwrap();
-        file.write_all(content.as_bytes()).unwrap();
+        file.write_all((arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
+        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+    })+"</body></html>")
+.as_bytes()).unwrap();
         tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&num+".html")));
     } else {
-        tup.1.push(BookElement::StringContent(content));
+       // tup.1.push(BookElement::StringContent(content));
     }
     if check.is_none() || title == "P.9" {
         return tup.clone();
