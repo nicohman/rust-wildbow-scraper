@@ -72,7 +72,7 @@ fn get_info(key:&str) -> Book{
             start:String::from("parahumans.wordpress.com/2017/10/21/glowworm-p-1/"),
             desc:String::from("The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning"),
             date:String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
-            cover:None,
+            cover:Some("https://demenses.net/cdn/6dd5e7ce1474c55ecc758304e6131451824855e3.png"),
         },
         "ward" => Book {
             title:String::from("Ward"),
