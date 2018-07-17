@@ -8,6 +8,7 @@ use url::Url;
 use std::path::PathBuf;
 use gen_epub_book::ops::{BookElement, EPubBook};
 use std::env;
+use std::io;
 use std::io::Write;
 use std::fs;
 use std::fs::File;
@@ -18,6 +19,7 @@ use chrono::DateTime;
 use std::fs::OpenOptions;
 use select::predicate::{Name, And, Class, Descendant};
 const FILE_USE: bool = true;
+const BOOKS: [&str;5] = ["worm","pact","twig","glow","ward"];
 struct Book {
     title:String,
     start:String,
@@ -70,7 +72,7 @@ fn get_info(key:&str) -> Book{
             start:String::from("parahumans.wordpress.com/2017/10/21/glowworm-p-1/"),
             desc:String::from("The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning"),
             date:String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
-            cover:None,
+            cover:Some("https://demenses.net/cdn/6dd5e7ce1474c55ecc758304e6131451824855e3.png".to_string()),
         },
         "ward" => Book {
             title:String::from("Ward"),
@@ -89,6 +91,15 @@ fn get_info(key:&str) -> Book{
 
     };
 }
+fn prompt_cover(title:String, url:String) -> bool {
+    print!("Would you like to include a cover for {}? Cover URL is {}. If it cannot be downloaded, program will not exit gracefully.(y/n)",title,url);
+    io::stdout().flush().ok().expect("Could not flush stdout");
+    let reader = io::stdin();
+
+    let mut buf = String::new();
+    (reader).read_line(&mut buf).unwrap();
+    buf == "y".to_string() || buf== "yes".to_string()
+}
 fn interpet_args() {
     let args: Vec<String> = env::args().collect();
     let command : &str;
@@ -101,10 +112,18 @@ fn interpet_args() {
             ::std::process::exit(64);
         }
     }
-    if command == "help" {
-        print_help();
-    } else {
-        process_book(download_book(get_info(command.as_ref())));
+    match command {
+        "help" => print_help(),
+        "all" => gen_all(),
+        _ => process_book(download_book(get_info(command.as_ref())))
+    }
+    
+}
+fn gen_all() {
+    for book in BOOKS.iter() {
+        let info = get_info(book);
+        println!("Now downloading {}",info.title);
+        process_book(download_book(info));
     }
 }
 fn print_help() {
@@ -121,7 +140,10 @@ fn print_help() {
 fn download_book(book:Book) -> DownloadedBook {
     let mut elements = vec![BookElement::Name(book.title.clone()), BookElement::Author("John McCrae".to_string()), BookElement::Language("en-US".to_string()), BookElement::Date(DateTime::parse_from_rfc2822(&book.date).unwrap()), BookElement::StringDescription(book.desc)];
     if book.cover.is_some() {
-        elements.push(BookElement::NetworkCover(Url::parse(&book.cover.unwrap()).unwrap()));
+        let cover = book.cover.unwrap();
+        if prompt_cover(book.title.clone(),cover.clone()) {
+        elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
+        }
     }
     let client = Client::new();
     if FILE_USE {
@@ -156,21 +178,20 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let mut arr = doc.find(Descendant(And(Name("div"), Class("entry-content")),Name("p"))).skip(1).collect::<Vec<Node>>();
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
-    let mut content = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","\n").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
-    });
-    let num = tup.1.len().clone().to_string();
-    content = content + "</body></html>";
+     let num = tup.1.len().clone().to_string();
     if FILE_USE {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .open("content/".to_string()+&num+".html")
             .unwrap();
-        file.write_all(content.as_bytes()).unwrap();
+        file.write_all((arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
+        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+    })+"</body></html>")
+.as_bytes()).unwrap();
         tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&num+".html")));
     } else {
-        tup.1.push(BookElement::StringContent(content));
+       // tup.1.push(BookElement::StringContent(content));
     }
     if check.is_none() || title == "P.9" {
         return tup.clone();
