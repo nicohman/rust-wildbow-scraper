@@ -72,14 +72,14 @@ fn get_info(key:&str) -> Book{
             start:String::from("parahumans.wordpress.com/2017/10/21/glowworm-p-1/"),
             desc:String::from("The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning"),
             date:String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
-            cover:Some("https://demenses.net/cdn/6dd5e7ce1474c55ecc758304e6131451824855e3.png".to_string()),
+            cover:None,
         },
         "ward" => Book {
             title:String::from("Ward"),
             start:String::from("parahumans.net/2017/09/11/daybreak-1-1/"),
             desc:String::from("The unwritten rules that govern the fights and outright wars between ‘capes’ have been amended: everyone gets their second chance.  It’s an uneasy thing to come to terms with when notorious supervillains and even monsters are playing at being hero.  The world ended two years ago, and as humanity straddles the old world and the new, there aren’t records, witnesses, or facilities to answer the villains’ past actions in the present.  One of many compromises, uneasy truces and deceptions that are starting to splinter as humanity rebuilds. None feel the injustice of this new status quo or the lack of established footing more than the past residents of the parahuman asylums.  The facilities hosted parahumans and their victims, but the facilities are ruined or gone; one of many fragile ex-patients is left to find a place in a fractured world.  She’s perhaps the person least suited to have anything to do with this tenuous peace or to stand alongside these false heroes.  She’s put in a position to make the decision: will she compromise to help forge what they call, with dark sentiment, a second golden age?  Or will she stand tall as a gilded dark age dawns?"),
             date:String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
-            cover:Some("https://demenses.net/cdn/883d4f706e3267a540585e86dec494f8f1ea3f05.jpg".to_string()),
+            cover:None,
         },
         _ =>  Book {
             title:String::from("Worm"),
@@ -179,24 +179,28 @@ fn download_iter( tup: &mut (String, Vec<BookElement>, Client)) -> (String, Vec<
     let to_sp = arr.len() -1;
     arr.truncate(to_sp);
      let num = tup.1.len().clone().to_string();
+     let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
+        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+    })+"</body></html>";
     if FILE_USE {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .open("content/".to_string()+&num+".html")
             .unwrap();
-        file.write_all((arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
-    })+"</body></html>")
+        file.write_all((cont)
 .as_bytes()).unwrap();
         tup.1.push(BookElement::Content(PathBuf::from("content/".to_string()+&num+".html")));
     } else {
-       // tup.1.push(BookElement::StringContent(content));
+       tup.1.push(BookElement::StringContent(cont));
     }
     if check.is_none() || title == "P.9" {
         return tup.clone();
     } else {
         tup.0 = check.unwrap().attr("href").unwrap().to_string();
+        if !tup.0.contains("https") {
+            tup.0 = "https:".to_string()+&tup.0;
+        }
         return download_iter(tup);
     }
 }
