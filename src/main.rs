@@ -18,6 +18,7 @@ use select::node::Node;
 use chrono::DateTime;
 use std::fs::OpenOptions;
 use select::predicate::{Name, And, Class, Descendant};
+use std::thread::Builder;
 const FILE_USE: bool = true;
 const BOOKS: [&str;5] = ["worm","pact","twig","glow","ward"];
 struct Book {
@@ -32,7 +33,13 @@ struct DownloadedBook {
     content:Vec<BookElement>
 }
 fn main() {
-    interpet_args();
+	let builder = Builder::new()
+				  .name("reductor".into())
+				  .stack_size(32 * 1024 * 1024); //32 MB of stack space
+	let handler = builder.spawn(|| {
+		interpet_args();
+	}).unwrap();
+	handler.join().unwrap();
 }
 fn check_args_num(num: usize, command:&str) -> bool{
     let need = match command {
@@ -138,6 +145,7 @@ fn print_help() {
     println!("ward: Scrapes Ward");
 }
 fn download_book(book:Book) -> DownloadedBook {
+	
     let mut elements = vec![BookElement::Name(book.title.clone()), BookElement::Author("John McCrae".to_string()), BookElement::Language("en-US".to_string()), BookElement::Date(DateTime::parse_from_rfc2822(&book.date).unwrap()), BookElement::StringDescription(book.desc)];
     if book.cover.is_some() {
         let cover = book.cover.unwrap();
