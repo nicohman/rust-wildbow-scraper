@@ -199,6 +199,13 @@ fn gen_all() {
         process_book(download_book(info));
     }
 }
+fn get_con_dir() -> String {
+    if fs::metadata("/tmp").is_ok() {
+        String::from("/tmp/content")
+    } else {
+        String::from("content")
+    }
+}
 fn download_book(book: Book) -> DownloadedBook {
     let mut elements = vec![
         BookElement::Name(book.title.clone()),
@@ -215,11 +222,22 @@ fn download_book(book: Book) -> DownloadedBook {
     }
     let client = Client::new();
     if FILE_USE {
-        if !fs::metadata("content").is_err() {
-            println!("Content directory is already there. Please remove and try again.");
-            ::std::process::exit(73);
+        if !fs::metadata(get_con_dir()).is_err() {
+            print!("Content directory is already there. Would you like to remove {}?", get_con_dir());
+            io::stdout().flush().ok().expect("Could not flush stdout");
+            let reader = io::stdin();
+            let mut buf = String::new();
+            (reader).read_line(&mut buf).unwrap();
+            buf = buf.trim().to_string();
+            if buf == "y".to_string() || buf == "yes".to_string(){
+                fs::remove_dir_all(get_con_dir()).unwrap();
+                fs::create_dir(get_con_dir()).unwrap();
+            } else {
+                println!("Exiting");
+                ::std::process::exit(73);
+            }
         } else {
-            fs::create_dir("content").unwrap();
+            fs::create_dir(get_con_dir()).unwrap();
         }
     }
     let done = download_iter(&mut (
@@ -280,11 +298,11 @@ fn download_iter(
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .open("content/".to_string() + &num + ".html")
+            .open(get_con_dir()+"/" + &num + ".html")
             .unwrap();
         file.write_all((cont).as_bytes()).unwrap();
         tup.1.push(BookElement::Content(
-            PathBuf::from("content/".to_string() + &num + ".html"),
+            PathBuf::from(get_con_dir()+"/" + &num + ".html"),
         ));
     } else {
         tup.1.push(BookElement::StringContent(cont));
@@ -315,7 +333,7 @@ fn process_book(book: DownloadedBook) {
         )
         .expect("Couldn't export epub");
     if FILE_USE {
-        fs::remove_dir_all("content").unwrap();
+        fs::remove_dir_all(get_con_dir()).unwrap();
     }
     println!("Done downloading {}", book.title);
 }
