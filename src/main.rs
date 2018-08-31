@@ -4,7 +4,7 @@ extern crate url;
 extern crate chrono;
 extern crate reqwest;
 extern crate argparse;
-use argparse::{ArgumentParser, StoreTrue};
+use argparse::{ArgumentParser, StoreTrue, PushConst};
 use reqwest::Client;
 use url::Url;
 use std::path::PathBuf;
@@ -135,59 +135,43 @@ fn prompt_cover(title: String, url: String) -> bool {
     buf == "y".to_string() || buf == "yes".to_string()
 }
 fn interpet_args() {
-    let mut args = Args::new();
+
+        let mut which : Vec<String>= Vec::new();
     {
         let mut parser = ArgumentParser::new();
         parser.set_description("Scrapes Wildbow's web serials");
-        parser.refer(&mut args.worm).add_option(
+        parser.refer(&mut which).add_option(
             &["-w", "--worm"],
-            StoreTrue,
+            PushConst("worm".to_string()),
             "Scrape Worm",
-        );
-        parser.refer(&mut args.pact).add_option(
+        ).add_option(
             &["-p", "--pact"],
-            StoreTrue,
+           PushConst("pact".to_string()),
             "Scrape Pact",
-        );
-        parser.refer(&mut args.twig).add_option(
+        ).add_option(
             &["-t", "--twig"],
-            StoreTrue,
+            PushConst("twig".to_string()),
             "Scrape Twig",
-        );
-        parser.refer(&mut args.glow).add_option(
+        ).add_option(
             &["-g", "--glow"],
-            StoreTrue,
+            PushConst("glow".to_string()),
             "Scrape Glow-worm",
-        );
-        parser.refer(&mut args.ward).add_option(
+        ).add_option(
             &["-r", "--ward"],
-            StoreTrue,
+            PushConst("ward".to_string()),
             "Scrape Ward",
-        );
-        parser.refer(&mut args.all).add_option(
+        ).add_option(
             &["-a", "--all"],
-            StoreTrue,
+            PushConst("all".to_string()),
             "Scrape all",
         );
         parser.parse_args_or_exit();
     }
-    if args.all {
+    if  which.iter().position(|ref s| s == &&"all".to_string()).is_some() {
         gen_all();
-    } else {
-        if args.worm {
-            process_book(download_book(get_info("worm")));
-        }
-        if args.pact {
-            process_book(download_book(get_info("pact")));
-        }
-        if args.twig {
-            process_book(download_book(get_info("twig")));
-        }
-        if args.ward {
-            process_book(download_book(get_info("ward")));
-        }
-        if args.glow {
-            process_book(download_book(get_info("glow")));
+    } else {  
+        for b in which {
+            process_book(download_book(get_info(&b)));
         }
     }
 
@@ -230,6 +214,7 @@ fn download_book(book: Book) -> DownloadedBook {
             (reader).read_line(&mut buf).unwrap();
             buf = buf.trim().to_string();
             if buf == "y".to_string() || buf == "yes".to_string(){
+                println!("Removed {}", get_con_dir());
                 fs::remove_dir_all(get_con_dir()).unwrap();
                 fs::create_dir(get_con_dir()).unwrap();
             } else {
