@@ -30,26 +30,7 @@ struct Book {
     date: String,
     cover: Option<String>,
 }
-struct Args {
-    worm: bool,
-    twig: bool,
-    pact: bool,
-    ward: bool,
-    glow: bool,
-    all: bool,
-}
-impl Args {
-    pub fn new() -> Args {
-        Args {
-            worm: false,
-            twig: false,
-            pact: false,
-            ward: false,
-            glow: false,
-            all: false,
-        }
-    }
-}
+
 struct DownloadedBook {
     title: String,
     content: Vec<BookElement>,
@@ -137,7 +118,9 @@ fn prompt_cover(title: String, url: String) -> bool {
 fn interpet_args() {
 
         let mut which : Vec<String>= Vec::new();
-    {
+        let mut yes = false;
+        {
+        
         let mut parser = ArgumentParser::new();
         parser.set_description("Scrapes Wildbow's web serials");
         parser.refer(&mut which).add_option(
@@ -165,22 +148,23 @@ fn interpet_args() {
             PushConst("all".to_string()),
             "Scrape all",
         );
+        parser.refer(&mut yes).add_option(&["-y","--yes"], StoreTrue, "Preemptively download all covers");
         parser.parse_args_or_exit();
     }
     if  which.iter().position(|ref s| s == &&"all".to_string()).is_some() {
-        gen_all();
+        gen_all(yes);
     } else {  
         for b in which {
-            process_book(download_book(get_info(&b)));
+            process_book(download_book(get_info(&b), yes));
         }
     }
 
 }
-fn gen_all() {
+fn gen_all(yes: bool) {
     for book in BOOKS.iter() {
         let info = get_info(book);
         println!("Now downloading {}", info.title);
-        process_book(download_book(info));
+        process_book(download_book(info, yes));
     }
 }
 fn get_con_dir() -> String {
@@ -190,7 +174,7 @@ fn get_con_dir() -> String {
         String::from("content")
     }
 }
-fn download_book(book: Book) -> DownloadedBook {
+fn download_book(book: Book, yes:bool) -> DownloadedBook {
     let mut elements = vec![
         BookElement::Name(book.title.clone()),
         BookElement::Author("John McCrae".to_string()),
@@ -200,7 +184,9 @@ fn download_book(book: Book) -> DownloadedBook {
     ];
     if book.cover.is_some() {
         let cover = book.cover.unwrap();
-        if prompt_cover(book.title.clone(), cover.clone()) {
+        if yes {
+            elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));            
+        } else if prompt_cover(book.title.clone(), cover.clone()) {
             elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
         }
     }
