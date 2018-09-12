@@ -4,7 +4,7 @@ extern crate url;
 extern crate chrono;
 extern crate reqwest;
 extern crate argparse;
-use argparse::{ArgumentParser, StoreTrue, PushConst};
+use argparse::{ArgumentParser, StoreTrue, PushConst, StoreConst};
 use reqwest::Client;
 use url::Url;
 use std::path::PathBuf;
@@ -118,7 +118,7 @@ fn prompt_cover(title: String, url: String) -> bool {
 fn interpet_args() {
 
         let mut which : Vec<String>= Vec::new();
-        let mut yes = false;
+        let mut yes = "";
         {
         
         let mut parser = ArgumentParser::new();
@@ -148,19 +148,27 @@ fn interpet_args() {
             PushConst("all".to_string()),
             "Scrape all",
         );
-        parser.refer(&mut yes).add_option(&["-y","--yes"], StoreTrue, "Preemptively download all covers");
+        parser.refer(&mut yes).add_option(&["-y","--yes"], StoreConst("yes"), "Preemptively download all covers").add_option(&["-n","--no"], StoreConst("no"), "Preemptively decline all covers");
         parser.parse_args_or_exit();
     }
+        let mut r :Option<bool>;
+        if yes == "yes" {
+            r = Some(true);
+        } else if yes == "no" {
+            r = Some(false);
+        } else {
+            r = None;
+        }
     if  which.iter().position(|ref s| s == &&"all".to_string()).is_some() {
-        gen_all(yes);
+        gen_all(r);
     } else {  
         for b in which {
-            process_book(download_book(get_info(&b), yes));
+            process_book(download_book(get_info(&b), r));
         }
     }
 
 }
-fn gen_all(yes: bool) {
+fn gen_all(yes: Option<bool>) {
     for book in BOOKS.iter() {
         let info = get_info(book);
         println!("Now downloading {}", info.title);
@@ -174,7 +182,7 @@ fn get_con_dir() -> String {
         String::from("content")
     }
 }
-fn download_book(book: Book, yes:bool) -> DownloadedBook {
+fn download_book(book: Book, yes:Option<bool>) -> DownloadedBook {
     let mut elements = vec![
         BookElement::Name(book.title.clone()),
         BookElement::Author("John McCrae".to_string()),
@@ -184,10 +192,13 @@ fn download_book(book: Book, yes:bool) -> DownloadedBook {
     ];
     if book.cover.is_some() {
         let cover = book.cover.unwrap();
-        if yes {
-            elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));            
-        } else if prompt_cover(book.title.clone(), cover.clone()) {
+        if yes.is_none() {
+            if prompt_cover(book.title.clone(), cover.clone()) {
             elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
+        } else if yes.unwrap() {
+        
+            elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));            
+        }
         }
     }
     let client = Client::new();
