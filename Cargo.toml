@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Nico Hickman <nicohman@demenses.net>"]
 
 [dependencies]
-reqwest = "0.8.5"
+reqwest = "0.9.3"
 select = "0.4.2"
 gen-epub-book = "2.2.0"
 chrono = "0.4"
