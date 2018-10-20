@@ -117,51 +117,69 @@ fn prompt_cover(title: String, url: String) -> bool {
 }
 fn interpet_args() {
 
-        let mut which : Vec<String>= Vec::new();
-        let mut yes = "";
-        {
-        
+    let mut which: Vec<String> = Vec::new();
+    let mut yes = "";
+    {
+
         let mut parser = ArgumentParser::new();
         parser.set_description("Scrapes Wildbow's web serials");
-        parser.refer(&mut which).add_option(
-            &["-w", "--worm"],
-            PushConst("worm".to_string()),
-            "Scrape Worm",
-        ).add_option(
-            &["-p", "--pact"],
-           PushConst("pact".to_string()),
-            "Scrape Pact",
-        ).add_option(
-            &["-t", "--twig"],
-            PushConst("twig".to_string()),
-            "Scrape Twig",
-        ).add_option(
-            &["-g", "--glow"],
-            PushConst("glow".to_string()),
-            "Scrape Glow-worm",
-        ).add_option(
-            &["-r", "--ward"],
-            PushConst("ward".to_string()),
-            "Scrape Ward",
-        ).add_option(
-            &["-a", "--all"],
-            PushConst("all".to_string()),
-            "Scrape all",
-        );
-        parser.refer(&mut yes).add_option(&["-y","--yes"], StoreConst("yes"), "Preemptively download all covers").add_option(&["-n","--no"], StoreConst("no"), "Preemptively decline all covers");
+        parser
+            .refer(&mut which)
+            .add_option(
+                &["-w", "--worm"],
+                PushConst("worm".to_string()),
+                "Scrape Worm",
+            )
+            .add_option(
+                &["-p", "--pact"],
+                PushConst("pact".to_string()),
+                "Scrape Pact",
+            )
+            .add_option(
+                &["-t", "--twig"],
+                PushConst("twig".to_string()),
+                "Scrape Twig",
+            )
+            .add_option(
+                &["-g", "--glow"],
+                PushConst("glow".to_string()),
+                "Scrape Glow-worm",
+            )
+            .add_option(
+                &["-r", "--ward"],
+                PushConst("ward".to_string()),
+                "Scrape Ward",
+            )
+            .add_option(&["-a", "--all"], PushConst("all".to_string()), "Scrape all");
+        parser
+            .refer(&mut yes)
+            .add_option(
+                &["-y", "--yes"],
+                StoreConst("yes"),
+                "Preemptively download all covers",
+            )
+            .add_option(
+                &["-n", "--no"],
+                StoreConst("no"),
+                "Preemptively decline all covers",
+            );
         parser.parse_args_or_exit();
     }
-        let mut r :Option<bool>;
-        if yes == "yes" {
-            r = Some(true);
-        } else if yes == "no" {
-            r = Some(false);
-        } else {
-            r = None;
-        }
-    if  which.iter().position(|ref s| s == &&"all".to_string()).is_some() {
+    let mut r: Option<bool>;
+    if yes == "yes" {
+        r = Some(true);
+    } else if yes == "no" {
+        r = Some(false);
+    } else {
+        r = None;
+    }
+    if which
+        .iter()
+        .position(|ref s| s == &&"all".to_string())
+        .is_some()
+    {
         gen_all(r);
-    } else {  
+    } else {
         for b in which {
             process_book(download_book(get_info(&b), r));
         }
@@ -182,7 +200,7 @@ fn get_con_dir() -> String {
         String::from("content")
     }
 }
-fn download_book(book: Book, yes:Option<bool>) -> DownloadedBook {
+fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
     let mut elements = vec![
         BookElement::Name(book.title.clone()),
         BookElement::Author("John McCrae".to_string()),
@@ -194,23 +212,28 @@ fn download_book(book: Book, yes:Option<bool>) -> DownloadedBook {
         let cover = book.cover.unwrap();
         if yes.is_none() {
             if prompt_cover(book.title.clone(), cover.clone()) {
-            elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
-        } else if yes.unwrap() {
-        
-            elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));            
+                elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
+            }
+        } else if yes.is_some() {
+            if yes.unwrap() {
+                elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
+            }
         }
-        }
+
     }
     let client = Client::new();
     if FILE_USE {
         if !fs::metadata(get_con_dir()).is_err() {
-            print!("Content directory is already there. Would you like to remove {}?", get_con_dir());
+            print!(
+                "Content directory is already there. Would you like to remove {}?",
+                get_con_dir()
+            );
             io::stdout().flush().ok().expect("Could not flush stdout");
             let reader = io::stdin();
             let mut buf = String::new();
             (reader).read_line(&mut buf).unwrap();
             buf = buf.trim().to_string();
-            if buf == "y".to_string() || buf == "yes".to_string(){
+            if buf == "y".to_string() || buf == "yes".to_string() {
                 println!("Removed {}", get_con_dir());
                 fs::remove_dir_all(get_con_dir()).unwrap();
                 fs::create_dir(get_con_dir()).unwrap();
@@ -280,11 +303,11 @@ fn download_iter(
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .open(get_con_dir()+"/" + &num + ".html")
+            .open(get_con_dir() + "/" + &num + ".html")
             .unwrap();
         file.write_all((cont).as_bytes()).unwrap();
         tup.1.push(BookElement::Content(
-            PathBuf::from(get_con_dir()+"/" + &num + ".html"),
+            PathBuf::from(get_con_dir() + "/" + &num + ".html"),
         ));
     } else {
         tup.1.push(BookElement::StringContent(cont));
