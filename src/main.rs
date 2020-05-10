@@ -1,28 +1,28 @@
-extern crate select;
-extern crate gen_epub_book;
-extern crate url;
-extern crate chrono;
-extern crate reqwest;
 extern crate argparse;
-use argparse::{ArgumentParser, StoreTrue, PushConst, StoreConst};
-use reqwest::Client;
-use url::Url;
-use std::path::PathBuf;
+extern crate chrono;
+extern crate gen_epub_book;
+extern crate reqwest;
+extern crate select;
+extern crate url;
+use argparse::{ArgumentParser, PushConst, StoreConst, StoreTrue};
+use chrono::DateTime;
 use gen_epub_book::ops::{BookElement, EPubBook};
+use reqwest::Client;
+use select::document::Document;
+use select::node::Node;
+use select::predicate::{And, Class, Descendant, Name};
 use std::env;
-use std::io;
-use std::io::Write;
 use std::fs;
 use std::fs::File;
-use select::document::Document;
-use std::io::stdout;
-use select::node::Node;
-use chrono::DateTime;
 use std::fs::OpenOptions;
-use select::predicate::{Name, And, Class, Descendant};
+use std::io;
+use std::io::stdout;
+use std::io::Write;
+use std::path::PathBuf;
 use std::thread::Builder;
+use url::Url;
 const FILE_USE: bool = true;
-const BOOKS: [&str; 5] = ["worm", "pact", "twig", "glow", "ward"];
+const BOOKS: [&str; 6] = ["worm", "pact", "twig", "glow", "ward", "pale"];
 struct Book {
     title: String,
     start: String,
@@ -36,10 +36,14 @@ struct DownloadedBook {
     content: Vec<BookElement>,
 }
 fn main() {
-    let builder = Builder::new().name("reductor".into()).stack_size(
-        32 * 1024 * 1024,
-    ); //32 MB of stack space
-    let handler = builder.spawn(|| { interpet_args(); }).unwrap();
+    let builder = Builder::new()
+        .name("reductor".into())
+        .stack_size(32 * 1024 * 1024); //32 MB of stack space
+    let handler = builder
+        .spawn(|| {
+            interpet_args();
+        })
+        .unwrap();
     handler.join().unwrap();
 }
 fn get_info(key: &str) -> Book {
@@ -91,6 +95,13 @@ fn get_info(key: &str) -> Book {
             date: String::from("Sat, 11 Nov 2017 00:00:00 +0100"),
             cover: None,
         },
+        "pale" => Book {
+            title: String::from("Pale"),
+            start: String::from("palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/"),
+            desc: String::from("There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies."),
+            date: String::from("Tue, 05 May 2020 00:00:00 +0100"),
+            cover: None,
+        },
         _ => Book {
             title: String::from("Worm"),
             start: String::from("parahumans.wordpress.com/2011/06/11/1-1/"),
@@ -116,11 +127,9 @@ fn prompt_cover(title: String, url: String) -> bool {
     buf == "y".to_string() || buf == "yes".to_string()
 }
 fn interpet_args() {
-
     let mut which: Vec<String> = Vec::new();
     let mut yes = "";
     {
-
         let mut parser = ArgumentParser::new();
         parser.set_description("Scrapes Wildbow's web serials");
         parser
@@ -149,6 +158,11 @@ fn interpet_args() {
                 &["-r", "--ward"],
                 PushConst("ward".to_string()),
                 "Scrape Ward",
+            )
+            .add_option(
+                &["-a", "--pale"],
+                PushConst("pale".to_string()),
+                "Scrape Pale",
             )
             .add_option(&["-a", "--all"], PushConst("all".to_string()), "Scrape all");
         parser
@@ -184,7 +198,6 @@ fn interpet_args() {
             process_book(download_book(get_info(&b), r));
         }
     }
-
 }
 fn gen_all(yes: Option<bool>) {
     for book in BOOKS.iter() {
@@ -219,7 +232,6 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
                 elements.push(BookElement::NetworkCover(Url::parse(&cover).unwrap()));
             }
         }
-
     }
     let client = Client::new();
     if FILE_USE {
@@ -245,11 +257,7 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
             fs::create_dir(get_con_dir()).unwrap();
         }
     }
-    let done = download_iter(&mut (
-        "https://".to_string() + &book.start,
-        elements,
-        client,
-    ));
+    let done = download_iter(&mut ("https://".to_string() + &book.start, elements, client));
     return DownloadedBook {
         title: book.title,
         content: done.1,
@@ -260,18 +268,19 @@ fn download_iter(
 ) -> (String, Vec<BookElement>, Client) {
     let page = tup.2.get(&tup.0).send().unwrap().text().unwrap();
     let doc = Document::from(page.as_ref());
-    let check = doc.find(Descendant(
-        And(Name("div"), Class("entry-content")),
-        Descendant(Name("p"), Name("a")),
-    )).filter(|x| if x.text().trim() == "Next Chapter" ||
-            x.text().trim() == "Next"
-        {
-            true
-        } else {
-            false
+    let check = doc
+        .find(Name("a")
+        )
+        .filter(|x| {
+            if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" {
+                true
+            } else {
+                false
+            }
         })
         .next();
-    let mut title = doc.find(Name("title"))
+    let mut title = doc
+        .find(Name("title"))
         .next()
         .unwrap()
         .text()
@@ -288,10 +297,12 @@ fn download_iter(
         title = "Bonds 1.1".to_string();
     }
     println!("Downloaded {}", title);
-    let mut arr = doc.find(Descendant(
-        And(Name("div"), Class("entry-content")),
-        Name("p"),
-    )).skip(1)
+    let mut arr = doc
+        .find(Descendant(
+            And(Name("div"), Class("entry-content")),
+            Name("p"),
+        ))
+        .skip(1)
         .collect::<Vec<Node>>();
     let to_sp = arr.len() - 1;
     arr.truncate(to_sp);
@@ -306,9 +317,9 @@ fn download_iter(
             .open(get_con_dir() + "/" + &num + ".html")
             .unwrap();
         file.write_all((cont).as_bytes()).unwrap();
-        tup.1.push(BookElement::Content(
-            PathBuf::from(get_con_dir() + "/" + &num + ".html"),
-        ));
+        tup.1.push(BookElement::Content(PathBuf::from(
+            get_con_dir() + "/" + &num + ".html",
+        )));
     } else {
         tup.1.push(BookElement::StringContent(cont));
     }
