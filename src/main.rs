@@ -263,14 +263,24 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
         content: done.1,
     };
 }
+fn fixup_html(input: String) -> String {
+    // Various entity replacements:
+    let input = input
+        .replace("&nbsp;", "&#160;")
+        .replace("<br>", "<br></br>")
+        .replace("& ", "&amp; ")
+        .replace("<Walk or->", "&lt;Walk or-&gt;")
+        .replace("<Walk!>", "&lt;Walk!&gt;");
+
+    input
+}
 fn download_iter(
     tup: &mut (String, Vec<BookElement>, Client),
 ) -> (String, Vec<BookElement>, Client) {
     let page = tup.2.get(&tup.0).send().unwrap().text().unwrap();
     let doc = Document::from(page.as_ref());
     let check = doc
-        .find(Name("a")
-        )
+        .find(Name("a"))
         .filter(|x| {
             if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" {
                 true
@@ -308,7 +318,7 @@ fn download_iter(
     arr.truncate(to_sp);
     let num = tup.1.len().clone().to_string();
     let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+        acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
     })+"</body></html>";
     if FILE_USE {
         let mut file = OpenOptions::new()
