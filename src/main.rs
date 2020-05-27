@@ -1,12 +1,14 @@
 extern crate argparse;
 extern crate chrono;
 extern crate gen_epub_book;
+extern crate regex;
 extern crate reqwest;
 extern crate select;
 extern crate url;
 use argparse::{ArgumentParser, PushConst, StoreConst, StoreTrue};
 use chrono::DateTime;
 use gen_epub_book::ops::{BookElement, EPubBook};
+use regex::Regex;
 use reqwest::Client;
 use select::document::Document;
 use select::node::Node;
@@ -263,14 +265,55 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
         content: done.1,
     };
 }
+fn fixup_html(input: String) -> String {
+    // Various entity replacements:
+    let mut input = input
+        .replace("&nbsp;", "&#160;")
+        .replace("<br>", "<br></br>")
+        .replace("& ", "&amp; ")
+        .replace("<Walk or->", "&lt;Walk or-&gt;")
+        .replace("<Walk!>", "&lt;Walk!&gt;");
+
+    // Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
+    // javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
+    //   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
+    // Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
+    // that allow for easy mutation, so let's just fix this up with a regex.
+    let re = Regex::new(
+        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
+    ).unwrap();
+    let mut matches = Vec::new();
+    for captures in re.captures_iter(&input) {
+        let whole_match = captures.get(0).unwrap();
+        let data = captures.get(1).unwrap();
+        matches.push((
+            whole_match.start(),
+            whole_match.end(),
+            data.as_str().to_string(),
+        ));
+    }
+    for m in matches.iter().rev() {
+        let bytes = hex::decode(&m.2).expect("mangled email data is not a hex string");
+        assert!(bytes.len() > 4, "mangled email data not long enough");
+        let key = bytes[0];
+        let decoded = bytes[1..]
+            .iter()
+            .map(|byte| byte ^ key)
+            .collect::<Vec<u8>>();
+        input.replace_range(
+            m.0..m.1,
+            std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string"),
+        );
+    }
+    input
+}
 fn download_iter(
     tup: &mut (String, Vec<BookElement>, Client),
 ) -> (String, Vec<BookElement>, Client) {
     let page = tup.2.get(&tup.0).send().unwrap().text().unwrap();
     let doc = Document::from(page.as_ref());
     let check = doc
-        .find(Name("a")
-        )
+        .find(Name("a"))
         .filter(|x| {
             if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" {
                 true
@@ -308,7 +351,7 @@ fn download_iter(
     arr.truncate(to_sp);
     let num = tup.1.len().clone().to_string();
     let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &x.inner_html().replace("&nbsp;","&#160;").replace("<br>","<br></br>").replace("& ", "&amp;").replace("<Walk or->","&lt;Walk or-&gt;").replace("<Walk!>","&lt;Walk!&gt;")+"</p>\n"
+        acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
     })+"</body></html>";
     if FILE_USE {
         let mut file = OpenOptions::new()
