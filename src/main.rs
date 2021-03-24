@@ -12,7 +12,7 @@ use regex::Regex;
 use reqwest::Client;
 use select::document::Document;
 use select::node::Node;
-use select::predicate::{And, Class, Descendant, Name};
+use select::predicate::{And, Class, Descendant, Name, Or};
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -340,15 +340,13 @@ fn download_iter(
         title = "Bonds 1.1".to_string();
     }
     println!("Downloaded {}", title);
-    let mut arr = doc
+    let arr = doc
         .find(Descendant(
             And(Name("div"), Class("entry-content")),
-            Name("p"),
+            Or(Name("p"), Name("h1")),
         ))
-        .skip(1)
+        .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
         .collect::<Vec<Node>>();
-    let to_sp = arr.len() - 1;
-    arr.truncate(to_sp);
     let num = tup.1.len().clone().to_string();
     let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
         acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
