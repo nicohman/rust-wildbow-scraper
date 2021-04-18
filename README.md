@@ -28,14 +28,17 @@ Usage:
 
 Scrapes wildbow's web serials
 
-optional arguments:
-  -h,--help             show this help message and exit
+Optional arguments:
+  -h,--help             Show this help message and exit
   -w,--worm             Scrape Worm
   -p,--pact             Scrape Pact
   -t,--twig             Scrape Twig
   -g,--glow             Scrape Glow-worm
   -r,--ward             Scrape Ward
+  -a,--pale             Scrape Pale
   -a,--all              Scrape all
+  -y,--yes              Preemptively download all covers
+  -n,--no               Preemptively decline all covers
 ```
 
 When scraping a book, it'll ask you if you want to include a cover. These are fanart covers and not made or associated with me in any way. The program automatically downloads them from other places and does not have them included.
