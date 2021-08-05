@@ -368,7 +368,12 @@ fn download_iter(
         return tup.clone();
     } else {
         tup.0 = check.unwrap().attr("href").unwrap().to_string();
-        if !tup.0.contains("http") {
+        // fix relative links
+        let site = "https://www.parahumans.net";
+        if !tup.0.contains(site) {
+            tup.0 = site.to_string() + &tup.0;
+        }
+        else if !tup.0.contains("http") {
             tup.0 = "https:".to_string() + &tup.0;
         }
         return download_iter(tup);
