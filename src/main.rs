@@ -65,8 +65,7 @@ fn get_info(key: &str) -> Book {
                 "pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
             ),
             desc: String::from(
-                "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself 
-                in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
+                "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             ),
             date: String::from("Sat, 07 Mar 2015 00:00:00 +0100"),
             cover: Some("https://i.redd.it/uyfiofnoko8z.png".to_string()),
@@ -248,7 +247,7 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
             let mut buf = String::new();
             (reader).read_line(&mut buf).unwrap();
             buf = buf.trim().to_string();
-            if buf == "y".to_string() || buf == "yes".to_string() {ext Chapt
+            if buf == "y".to_string() || buf == "yes".to_string() {
                 println!("Removed {}", get_con_dir());
                 fs::remove_dir_all(get_con_dir()).unwrap();
                 fs::create_dir(get_con_dir()).unwrap();
@@ -284,7 +283,7 @@ fn fixup_html(input: String) -> String {
         r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
     ).unwrap();
     let mut matches = Vec::new();
-    for captures in re.captures_iter(&input) {ext Chapt
+    for captures in re.captures_iter(&input) {
         let whole_match = captures.get(0).unwrap();
         let data = captures.get(1).unwrap();
         matches.push((
