@@ -35,7 +35,7 @@ Optional arguments:
   -t,--twig             Scrape Twig
   -g,--glow             Scrape Glow-worm
   -r,--ward             Scrape Ward
-  -a,--pale             Scrape Pale
+  -l,--pale             Scrape Pale
   -a,--all              Scrape all
   -y,--yes              Preemptively download all covers
   -n,--no               Preemptively decline all covers

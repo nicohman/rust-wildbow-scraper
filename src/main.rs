@@ -162,7 +162,7 @@ fn interpet_args() {
                 "Scrape Ward",
             )
             .add_option(
-                &["-a", "--pale"],
+                &["-l", "--pale"],
                 PushConst("pale".to_string()),
                 "Scrape Pale",
             )
