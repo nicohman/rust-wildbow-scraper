@@ -1,11 +1,11 @@
-extern crate argparse;
+extern crate structopt;
 extern crate chrono;
 extern crate gen_epub_book;
 extern crate regex;
 extern crate reqwest;
 extern crate select;
 extern crate url;
-use argparse::{ArgumentParser, PushConst, StoreConst, StoreTrue};
+use structopt::StructOpt;
 use chrono::DateTime;
 use gen_epub_book::ops::{BookElement, EPubBook};
 use regex::Regex;
@@ -32,7 +32,34 @@ struct Book {
     date: String,
     cover: Option<String>,
 }
-
+/// scrapes books written by Wildbow like Worm, Ward, Twig ETC and converts it to EPUB format.
+#[derive(StructOpt)]
+struct Args {
+	/// Scrape Worm?
+	#[structopt(short, long)]
+	worm: bool,
+	/// scrape Pact?
+	#[structopt(short, long)]
+	pact: bool,
+	/// scrape Twig?
+	#[structopt(short, long)]
+	twig: bool,
+	/// Scrape Glow Worm?
+	#[structopt(short, long)]
+	glow_worm: bool,
+	/// Scrape Ward?
+	#[structopt(short="r", long)]
+	ward: bool,
+	/// scrape Pale?
+	#[structopt(short="l", long)]
+	pale: bool,
+	/// Scrape them all?
+	#[structopt(short, long)]
+	all: bool,
+	/// get covers? Default is to prompt for each book
+	#[structopt(short, long)]
+	covers: Option<bool>,
+}
 struct DownloadedBook {
     title: String,
     content: Vec<BookElement>,
@@ -129,76 +156,27 @@ fn prompt_cover(title: String, url: String) -> bool {
     buf == "y".to_string() || buf == "yes".to_string()
 }
 fn interpet_args() {
-    let mut which: Vec<String> = Vec::new();
-    let mut yes = "";
-    {
-        let mut parser = ArgumentParser::new();
-        parser.set_description("Scrapes Wildbow's web serials");
-        parser
-            .refer(&mut which)
-            .add_option(
-                &["-w", "--worm"],
-                PushConst("worm".to_string()),
-                "Scrape Worm",
-            )
-            .add_option(
-                &["-p", "--pact"],
-                PushConst("pact".to_string()),
-                "Scrape Pact",
-            )
-            .add_option(
-                &["-t", "--twig"],
-                PushConst("twig".to_string()),
-                "Scrape Twig",
-            )
-            .add_option(
-                &["-g", "--glow"],
-                PushConst("glow".to_string()),
-                "Scrape Glow-worm",
-            )
-            .add_option(
-                &["-r", "--ward"],
-                PushConst("ward".to_string()),
-                "Scrape Ward",
-            )
-            .add_option(
-                &["-l", "--pale"],
-                PushConst("pale".to_string()),
-                "Scrape Pale",
-            )
-            .add_option(&["-a", "--all"], PushConst("all".to_string()), "Scrape all");
-        parser
-            .refer(&mut yes)
-            .add_option(
-                &["-y", "--yes"],
-                StoreConst("yes"),
-                "Preemptively download all covers",
-            )
-            .add_option(
-                &["-n", "--no"],
-                StoreConst("no"),
-                "Preemptively decline all covers",
-            );
-        parser.parse_args_or_exit();
+    let args = Args::from_args(); // parse command line arguments, print help messages, and make sure all the arguments are valid. This feature is provided by structopt
+
+    if args.all {
+         return gen_all(args.covers);
     }
-    let mut r: Option<bool>;
-    if yes == "yes" {
-        r = Some(true);
-    } else if yes == "no" {
-        r = Some(false);
-    } else {
-        r = None;
-    }
-    if which
-        .iter()
-        .position(|ref s| s == &&"all".to_string())
-        .is_some()
-    {
-        gen_all(r);
-    } else {
-        for b in which {
-            process_book(download_book(get_info(&b), r));
+    let mut books = Vec::new();
+    // an anonymous function which adds the book with name name to books if requested is true
+    let mut add_book = |name, requested| {
+        if requested {
+            books.push(name);
         }
+    };
+    add_book("worm", args.worm);
+    add_book("ward", args.ward);
+    add_book("pact", args.pact);
+    add_book("pale", args.pale);
+    add_book("glow", args.glow_worm);
+    add_book("twig", args.twig);
+
+    for b in books.iter() {
+        process_book(download_book(get_info(&b), args.covers));
     }
 }
 fn gen_all(yes: Option<bool>) {
