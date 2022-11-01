@@ -293,7 +293,7 @@ fn download_iter(
     let check = doc
         .find(Name("a"))
         .filter(|x| {
-            if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr"{
+            if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt" {
                 true
             } else {
                 false
