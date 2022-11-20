@@ -284,6 +284,29 @@ fn download_pages(
     while let Some(page_url) = link {
         let page = client.get(page_url.clone()).send()?.text()?;
         let doc = Document::from(page.as_ref());
+
+        // follow redirect if current page uses meta refresh to redirect
+        let redirect = doc.find(Name("meta"))
+                          .filter(|node| {
+                              node.attr("http-equiv") == Some("refresh")
+                          })
+                          .filter_map(|node| {
+                              node.attr("content")
+                          })
+                          .flat_map(|content| {
+                              content.split(';')
+                                     .filter(|string| {
+                                         string.trim().to_lowercase().starts_with("url=")
+                                     })
+                          })
+                          .next();
+        if let Some(redirect_url) = redirect {
+            let mut redirect_chars = redirect_url.chars();
+            redirect_chars.nth(3); // skip over 'url='
+            link = Some(page_url.join(redirect_chars.as_str())?);
+            continue;
+        }
+
         let next_page = doc
             .find(Name("a"))
             .filter(|x| {
