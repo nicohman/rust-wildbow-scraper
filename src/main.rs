@@ -5,6 +5,7 @@ extern crate regex;
 extern crate reqwest;
 extern crate select;
 extern crate url;
+extern crate anyhow;
 use structopt::StructOpt;
 use chrono::DateTime;
 use gen_epub_book::ops::{BookElement, EPubBook};
@@ -13,18 +14,17 @@ use reqwest::Client;
 use select::document::Document;
 use select::node::Node;
 use select::predicate::{And, Class, Descendant, Name, Or};
-use std::env;
 use std::fs;
-use std::fs::File;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io;
-use std::io::stdout;
-use std::io::Write;
+use std::io::{stdout, Write};
 use std::path::PathBuf;
-use std::thread::Builder;
 use url::Url;
+use anyhow::{anyhow, Result};
+
+
 const FILE_USE: bool = true;
-const BOOKS: [&str; 6] = ["worm", "pact", "twig", "glow", "ward", "pale"];
+
 struct Book {
     title: String,
     start: String,
@@ -32,6 +32,7 @@ struct Book {
     date: String,
     cover: Option<String>,
 }
+
 /// scrapes books written by Wildbow like Worm, Ward, Twig ETC and converts it to EPUB format.
 #[derive(StructOpt)]
 struct Args {
@@ -60,21 +61,16 @@ struct Args {
 	#[structopt(short, long)]
 	covers: Option<bool>,
 }
+
 struct DownloadedBook {
     title: String,
     content: Vec<BookElement>,
 }
-fn main() {
-    let builder = Builder::new()
-        .name("reductor".into())
-        .stack_size(32 * 1024 * 1024); //32 MB of stack space
-    let handler = builder
-        .spawn(|| {
-            interpet_args();
-        })
-        .unwrap();
-    handler.join().unwrap();
+
+fn main() -> Result<()> {
+    interpret_args()
 }
+
 fn get_info(key: &str) -> Book {
     return match key {
         "worm" => Book {
@@ -143,6 +139,7 @@ fn get_info(key: &str) -> Book {
 
     };
 }
+
 fn prompt_cover(title: String, url: String) -> bool {
     print!(
         "Would you like to include a cover for {}? Cover URL is {}. If it cannot be downloaded, program will not exit gracefully.(y/n)",
@@ -155,37 +152,26 @@ fn prompt_cover(title: String, url: String) -> bool {
     (reader).read_line(&mut buf).unwrap();
     buf == "y".to_string() || buf == "yes".to_string()
 }
-fn interpet_args() {
+
+fn interpret_args() -> Result<()> {
     let args = Args::from_args(); // parse command line arguments, print help messages, and make sure all the arguments are valid. This feature is provided by structopt
 
-    if args.all {
-         return gen_all(args.covers);
-    }
-    let mut books = Vec::new();
     // an anonymous function which adds the book with name name to books if requested is true
-    let mut add_book = |name, requested| {
+    let add_book = |name, requested| {
         if requested {
-            books.push(name);
+            process_book(download_book(get_info(name), args.covers)?)?;
         }
+        let result: Result<()> = Ok(());
+        result
     };
-    add_book("worm", args.worm);
-    add_book("ward", args.ward);
-    add_book("pact", args.pact);
-    add_book("pale", args.pale);
-    add_book("glow", args.glow_worm);
-    add_book("twig", args.twig);
+    add_book("worm", args.worm || args.all)?;
+    add_book("ward", args.ward || args.all)?;
+    add_book("pact", args.pact || args.all)?;
+    add_book("pale", args.pale || args.all)?;
+    add_book("glow", args.glow_worm || args.all)?;
+    add_book("twig", args.twig || args.all)
+}
 
-    for b in books.iter() {
-        process_book(download_book(get_info(&b), args.covers));
-    }
-}
-fn gen_all(yes: Option<bool>) {
-    for book in BOOKS.iter() {
-        let info = get_info(book);
-        println!("Now downloading {}", info.title);
-        process_book(download_book(info, yes));
-    }
-}
 fn get_con_dir() -> String {
     if fs::metadata("/tmp").is_ok() {
         String::from("/tmp/content")
@@ -193,7 +179,8 @@ fn get_con_dir() -> String {
         String::from("content")
     }
 }
-fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
+
+fn download_book(book: Book, yes: Option<bool>) -> Result<DownloadedBook> {
     let mut elements = vec![
         BookElement::Name(book.title.clone()),
         BookElement::Author("John McCrae".to_string()),
@@ -213,36 +200,38 @@ fn download_book(book: Book, yes: Option<bool>) -> DownloadedBook {
             }
         }
     }
-    let client = Client::new();
     if FILE_USE {
         if !fs::metadata(get_con_dir()).is_err() {
             print!(
                 "Content directory is already there. Would you like to remove {}?",
                 get_con_dir()
             );
-            io::stdout().flush().ok().expect("Could not flush stdout");
+            io::stdout().flush()?;
             let reader = io::stdin();
             let mut buf = String::new();
-            (reader).read_line(&mut buf).unwrap();
+            (reader).read_line(&mut buf)?;
             buf = buf.trim().to_string();
             if buf == "y".to_string() || buf == "yes".to_string() {
                 println!("Removed {}", get_con_dir());
-                fs::remove_dir_all(get_con_dir()).unwrap();
-                fs::create_dir(get_con_dir()).unwrap();
+                fs::remove_dir_all(get_con_dir())?;
+                fs::create_dir(get_con_dir())?;
             } else {
                 println!("Exiting");
                 ::std::process::exit(73);
             }
         } else {
-            fs::create_dir(get_con_dir()).unwrap();
+            fs::create_dir(get_con_dir())?;
         }
     }
-    let done = download_iter(&mut ("https://".to_string() + &book.start, elements, client));
-    return DownloadedBook {
+    let client = Client::new();
+    let page_url = Url::parse(&("https://".to_string() + &book.start))?;
+    let elements = download_pages(Some(page_url), elements, client)?;
+    return Ok(DownloadedBook {
         title: book.title,
-        content: done.1,
-    };
+        content: elements,
+    });
 }
+
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
     let mut input = input
@@ -285,90 +274,101 @@ fn fixup_html(input: String) -> String {
     }
     input
 }
-fn download_iter(
-    tup: &mut (String, Vec<BookElement>, Client),
-) -> (String, Vec<BookElement>, Client) {
-    let page = tup.2.get(&tup.0).send().unwrap().text().unwrap();
-    let doc = Document::from(page.as_ref());
-    let check = doc
-        .find(Name("a"))
-        .filter(|x| {
-            if x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt" {
-                true
-            } else {
-                false
-            }
-        })
-        .next();
-    let mut title = doc
-        .find(Name("title"))
-        .next()
-        .unwrap()
-        .text()
-        .split("|")
-        .next()
-        .unwrap()
-        .trim()
-        .replace(" - Parahumans 2", "")
-        .replace(" – Twig", "")
-        .replace("Glow-worm – ", "")
-        .replace("(Sequel is live!)", "")
-        .to_string();
-    if &title == "1.01" {
-        title = "Bonds 1.1".to_string();
-    }
-    println!("Downloaded {}", title);
-    let arr = doc
-        .find(Descendant(
-            And(Name("div"), Class("entry-content")),
-            Or(Name("p"), Name("h1")),
-        ))
-        .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-        .collect::<Vec<Node>>();
-    let num = tup.1.len().clone().to_string();
-    let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-        acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
-    })+"</body></html>";
-    if FILE_USE {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(get_con_dir() + "/" + &num + ".html")
-            .unwrap();
-        file.write_all((cont).as_bytes()).unwrap();
-        tup.1.push(BookElement::Content(PathBuf::from(
-            get_con_dir() + "/" + &num + ".html",
-        )));
-    } else {
-        tup.1.push(BookElement::StringContent(cont));
-    }
-    if check.is_none() || title == "P.9" {
-        return tup.clone();
-    } else {
-        tup.0 = check.unwrap().attr("href").unwrap().to_string();
-        if !tup.0.contains("http") {
-            tup.0 = "https:".to_string() + &tup.0;
+
+fn download_pages(
+    mut link: Option<Url>,
+    mut elements: Vec<BookElement>,
+    client: Client
+) -> Result<Vec<BookElement>> {
+
+    while let Some(page_url) = link {
+        let page = client.get(page_url.clone()).send()?.text()?;
+        let doc = Document::from(page.as_ref());
+        let next_page = doc
+            .find(Name("a"))
+            .filter(|x| {
+                x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt"
+            })
+            .next();
+        let mut title = doc
+            .find(Name("title"))
+            .next().ok_or(anyhow!("no element named 'title' on page"))?
+            .text()
+            .split("|")
+            .next().expect("split on string returned no elements")
+            .trim()
+            .replace(" - Parahumans 2", "")
+            .replace(" – Twig", "")
+            .replace("Glow-worm – ", "")
+            .replace("(Sequel is live!)", "")
+            .to_string();
+        if &title == "1.01" {
+            title = "Bonds 1.1".to_string();
         }
-        return download_iter(tup);
+        println!("Downloaded {}", title);
+        let arr = doc
+            .find(Descendant(
+                And(Name("div"), Class("entry-content")),
+                Or(Name("p"), Name("h1")),
+            ))
+            .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
+            .collect::<Vec<Node>>();
+        let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
+            acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
+        })+"</body></html>";
+        if FILE_USE {
+            let filepath = get_con_dir() + &format!("/{}.html", elements.len());
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&filepath)
+                .unwrap();
+            file.write_all((cont).as_bytes()).unwrap();
+            elements.push(BookElement::Content(PathBuf::from(filepath)));
+        } else {
+            elements.push(BookElement::StringContent(cont));
+        }
+        if title == "P.9" {
+            break;
+        }
+
+        if let Some(a_element) = next_page {
+            link = Some(page_url.join(a_element.attr("href")
+                                               .ok_or(anyhow!("<a> link with name 'next' does not have href attribute"))?
+                                      )?)
+        } else {
+            link = None
+        }
+    }
+    Ok(elements)
+}
+
+fn epub_err_to_anyhow(err: gen_epub_book::Error) -> anyhow::Error {
+    let mut description: Vec<u8> = Vec::new();
+    err.print_error(&mut description);
+    match std::str::from_utf8(&description) {
+        Ok(message) => anyhow!(message.to_string()),
+        Err(error) => error.into()
     }
 }
-fn process_book(book: DownloadedBook) {
+
+fn process_book(book: DownloadedBook) -> Result<()> {
     println!("Done downloading {}", book.title);
     let filename = book.title.clone().to_lowercase();
     println!("Converting to epub now at {}.epub", filename);
-    let mut processed = EPubBook::from_elements(book.content).unwrap();
+    let mut processed = EPubBook::from_elements(book.content).map_err(epub_err_to_anyhow)?;
     processed
-        .normalise_paths(&["./".parse().unwrap()], false, &mut stdout())
-        .unwrap();
+        .normalise_paths(&["./".parse().unwrap()], false, &mut stdout()).map_err(epub_err_to_anyhow)?;
     processed
         .write_zip(
-            &mut File::create(filename + ".epub").unwrap(),
+            &mut File::create(filename + ".epub")?,
             false,
             &mut stdout(),
         )
         .expect("Couldn't export epub");
     if FILE_USE {
-        fs::remove_dir_all(get_con_dir()).unwrap();
+        fs::remove_dir_all(get_con_dir())?;
     }
     println!("Done downloading {}", book.title);
+    Ok(())
 }
