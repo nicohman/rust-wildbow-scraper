@@ -4,14 +4,13 @@ version = "1.0.0"
 authors = ["Nico Hickman <nicohman@demenses.net>"]
 
 [dependencies]
-reqwest = "0.9.3"
+reqwest = { version = "0.11", features = ["blocking"] }
 select = "0.4.2"
-gen-epub-book = "2.3.2"
 chrono = "0.4"
-url = "1.7.0"
 structopt = "0.3.22"
 regex = "1.3.7"
 hex = "0.4.2"
-anyhow = "1.0"
+easy-error = "1.0"
+epub-builder = "0.5"
 
 
