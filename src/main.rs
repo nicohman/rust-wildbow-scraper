@@ -131,7 +131,7 @@ fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
         title,
         url
     );
-    io::stdout().flush().context("Could not flush context")?;
+    io::stdout().flush().context("Could not flush stdout")?;
     let reader = io::stdin();
     let mut buf = String::new();
     reader.read_line(&mut buf).context("Could not read line")?;
