@@ -23,22 +23,22 @@ You'll need [cargo](https://github.com/rust-lang/cargo) installed. Run:
 Run `rust-wildbow-scraper --help` to view the list of commands: 
 
 ```
-Usage:
-   rust-wildbow-scraper [OPTIONS]
+USAGE:
+    rust-wildbow-scraper [FLAGS] [OPTIONS]
 
-Scrapes wildbow's web serials
+FLAGS:
+    -a, --all          Scrape them all?
+    -g, --glow-worm    Scrape Glow Worm?
+    -h, --help         Prints help information
+    -p, --pact         scrape Pact?
+    -l, --pale         scrape Pale?
+    -t, --twig         scrape Twig?
+    -V, --version      Prints version information
+    -r, --ward         Scrape Ward?
+    -w, --worm         Scrape Worm?
 
-Optional arguments:
-  -h,--help             Show this help message and exit
-  -w,--worm             Scrape Worm
-  -p,--pact             Scrape Pact
-  -t,--twig             Scrape Twig
-  -g,--glow             Scrape Glow-worm
-  -r,--ward             Scrape Ward
-  -l,--pale             Scrape Pale
-  -a,--all              Scrape all
-  -y,--yes              Preemptively download all covers
-  -n,--no               Preemptively decline all covers
+OPTIONS:
+    -c, --covers <covers>    get covers? Default is to prompt for each book
 ```
 
 When scraping a book, it'll ask you if you want to include a cover. These are fanart covers and not made or associated with me in any way. The program automatically downloads them from other places and does not have them included.
