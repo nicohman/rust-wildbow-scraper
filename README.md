@@ -18,6 +18,12 @@ You'll need [cargo](https://github.com/rust-lang/cargo) installed. Run:
 
 ` cargo install --path .`
 
+### Build Dependencies
+
+- `rustc`
+- `libssl-dev`(On Ubuntu, see [here](https://docs.rs/openssl/latest/openssl/) for other distros)
+- `pkg-config`
+
 ## Usage
 
 Run `rust-wildbow-scraper --help` to view the list of commands: 
