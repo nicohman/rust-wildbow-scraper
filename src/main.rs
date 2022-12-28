@@ -80,7 +80,7 @@ fn get_info(key: &str) -> Book {
             desc: 
                 "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             date: "Sat, 07 Mar 2015 00:00:00 +0100",
-            cover: Some("https://i.redd.it/uyfiofnoko8z.png"),
+            cover: Some("https://preview.redd.it/9scpenoq5v671.png?width=1410&format=png&auto=webp&s=c17e05b90d886ed1858aed33fbeeee37ed35a711"),
         },
         "twig" => Book {
             title: "Twig",
@@ -111,7 +111,7 @@ fn get_info(key: &str) -> Book {
             start: "palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/",
             desc: "There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies.",
             date: "Tue, 05 May 2020 00:00:00 +0100",
-            cover: None,
+            cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
         },
         _ => Book {
             title: "Worm",
