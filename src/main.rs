@@ -5,7 +5,7 @@ extern crate reqwest;
 extern crate select;
 extern crate easy_error;
 use structopt::StructOpt;
-use epub_builder::{EpubBuilder, EpubContent, ReferenceType, ZipLibrary};
+use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
 use regex::Regex;
 use reqwest::blocking::Client;
 use reqwest::Url;
@@ -163,6 +163,7 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
     builder
+    .epub_version(EpubVersion::V30)
     .metadata("author", "John McCrae").context("Could not set author metadata")?
     .metadata("title", book.title).context("Could not set title metadata")?
     .metadata("lang", "en-US").context("Could not set language metadata")?
