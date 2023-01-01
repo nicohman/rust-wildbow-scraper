@@ -285,16 +285,16 @@ fn download_pages(
             title = "Bonds 1.1".to_string();
         }
         println!("Downloaded {}", title);
-        let arr = doc
+        let content_elems = doc
             .find(Descendant(
                 And(Name("div"), Class("entry-content")),
                 Or(Name("p"), Name("h1")),
             ))
             .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-            .collect::<Vec<Node>>();
-        let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-            acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
-        })+"</body></html>";
+            .map(|elem| "<p>".to_string() + &fixup_html(elem.inner_html()) + "</p>");
+
+        let body_text = content_elems.collect::<Vec<String>>().join("\n");
+        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
 
         builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
