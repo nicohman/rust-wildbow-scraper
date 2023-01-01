@@ -306,7 +306,7 @@ fn download_pages(
             acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
         })+"</body></html>";
 
-        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).reftype(ReferenceType::Text))
+        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
 
         if title == "P.9" {
