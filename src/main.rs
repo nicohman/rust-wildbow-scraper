@@ -14,6 +14,8 @@ use select::node::Node;
 use select::predicate::{And, Class, Descendant, Name, Or};
 use std::fs::File;
 use std::io;
+use std::iter::FromIterator;
+use std::collections::HashMap;
 use std::io::Write;
 use easy_error::{ResultExt, Error, err_msg};
 
@@ -162,8 +164,24 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
 
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
+    let stylesheet = "
+        .indent-one {
+            margin-left: 2em;
+        }
+        .indent-two {
+            margin-left: 4em;
+        }
+        .center {
+            text-align: center;
+        }
+        .right {
+            text-align: right;
+        }
+    ";
+
     builder
     .epub_version(EpubVersion::V30)
+    .stylesheet(stylesheet.as_bytes()).context("Could not set stylesheet")?
     .metadata("author", "John McCrae").context("Could not set author metadata")?
     .metadata("title", book.title).context("Could not set title metadata")?
     .metadata("lang", "en-US").context("Could not set language metadata")?
@@ -195,6 +213,73 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
         title: book.title,
         builder: builder,
     })
+}
+
+fn style_classes(input: Node) -> String {
+    let mut properties = if let Some(style) = input.attr("style") {
+        let parsed: Vec<(&str, &str)> = style.split(";")
+            .map(|property|
+                property
+                    .split_once(":")
+                    .map(|(name, value)| (name.trim(), value.trim()))
+            )
+            .filter_map(|property| property)
+            .collect();
+        HashMap::from_iter(parsed)
+    } else {
+        HashMap::new()
+    };
+
+    let mut classes = Vec::new();
+
+    if let Some(padding_left) = properties.remove("padding-left") {
+        if padding_left == "30px" {
+            // Indentation in https://twigserial.wordpress.com/2016/12/24/lamb-arc-15/
+            classes.push("indent-one");
+        } else if padding_left == "40px" {
+            // Indentation in https://www.parahumans.net/2019/03/23/heavens-12-9/
+            // Indentation in https://palewebserial.wordpress.com/2020/11/21/cutting-class-6-8/
+            classes.push("indent-one");
+        } else if padding_left == "60px" {
+            // Nested indentation in https://twigserial.wordpress.com/2016/11/05/lamb-arc-14/
+            classes.push("indent-two");
+        } else if padding_left == "80px" {
+            // Nested indentation in https://palewebserial.wordpress.com/2022/02/08/gone-and-done-it-17-5/
+            classes.push("indent-two");
+        } else {
+            println!("Warning: Unknown indentation detected: {}", padding_left);
+        }
+    }
+
+    if let Some(text_align) = properties.remove("text-align") {
+        if text_align == "center" {
+            // Separator ☙ in https://twigserial.wordpress.com/2016/12/17/bitter-pill-15-15/
+            // Separator ■ in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
+            // Separator 🟂 in https://palewebserial.wordpress.com/2020/05/30/lost-for-words-1-7/
+            // Separator ⊙ in https://www.parahumans.net/2019/03/12/heavens-12-f/
+            classes.push("center");
+        } else if text_align == "right" {
+            // Quote attribution in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
+            classes.push("right");
+        } else if text_align == "left" {
+            // Ignore.
+        } else {
+            println!("Warning: Unknown alignment detected: {}", text_align);
+        }
+    }
+
+    if !properties.is_empty() {
+        println!("Warning: Unhandled properties:");
+        for (name, value) in properties {
+            println!("  {name}: {value};")
+        }
+    }
+
+    if classes.is_empty() {
+        "".to_string()
+    } else {
+        " class=\"".to_string() + &classes.join(" ") + "\""
+    }
 }
 
 fn fixup_html(input: String) -> String {
@@ -291,10 +376,10 @@ fn download_pages(
                 Or(Name("p"), Name("h1")),
             ))
             .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-            .map(|elem| "<p>".to_string() + &fixup_html(elem.inner_html()) + "</p>");
+            .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
 
         let body_text = content_elems.collect::<Vec<String>>().join("\n");
-        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
+        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
 
         builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
