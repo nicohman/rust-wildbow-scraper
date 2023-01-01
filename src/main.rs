@@ -6,7 +6,7 @@ extern crate select;
 extern crate easy_error;
 use structopt::StructOpt;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
-use regex::Regex;
+use regex::{Regex, Captures};
 use reqwest::blocking::Client;
 use reqwest::Url;
 use select::document::Document;
@@ -199,7 +199,7 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
 
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
-    let mut input = input
+    let input = input
         .replace("&nbsp;", "&#160;")
         .replace("<br>", "<br></br>")
         .replace("& ", "&amp; ")
@@ -214,30 +214,19 @@ fn fixup_html(input: String) -> String {
     let re = Regex::new(
         r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
     ).unwrap();
-    let mut matches = Vec::new();
-    for captures in re.captures_iter(&input) {
-        let whole_match = captures.get(0).unwrap();
-        let data = captures.get(1).unwrap();
-        matches.push((
-            whole_match.start(),
-            whole_match.end(),
-            data.as_str().to_string(),
-        ));
-    }
-    for m in matches.iter().rev() {
-        let bytes = hex::decode(&m.2).expect("mangled email data is not a hex string");
+
+    re.replace_all(&input, |captures: &Captures| {
+        let data = captures.get(1).unwrap().as_str();
+        let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() > 4, "mangled email data not long enough");
         let key = bytes[0];
         let decoded = bytes[1..]
             .iter()
             .map(|byte| byte ^ key)
             .collect::<Vec<u8>>();
-        input.replace_range(
-            m.0..m.1,
-            std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string"),
-        );
-    }
-    input
+
+        std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").to_string()
+    }).to_string()
 }
 
 fn download_pages(
