@@ -5,8 +5,8 @@ extern crate reqwest;
 extern crate select;
 extern crate easy_error;
 use structopt::StructOpt;
-use epub_builder::{EpubBuilder, EpubContent, ReferenceType, ZipLibrary};
-use regex::Regex;
+use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
+use regex::{Regex, Captures};
 use reqwest::blocking::Client;
 use reqwest::Url;
 use select::document::Document;
@@ -14,6 +14,8 @@ use select::node::Node;
 use select::predicate::{And, Class, Descendant, Name, Or};
 use std::fs::File;
 use std::io;
+use std::iter::FromIterator;
+use std::collections::HashMap;
 use std::io::Write;
 use easy_error::{ResultExt, Error, err_msg};
 
@@ -162,7 +164,24 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
 
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
+    let stylesheet = "
+        .indent-one {
+            margin-left: 2em;
+        }
+        .indent-two {
+            margin-left: 4em;
+        }
+        .center {
+            text-align: center;
+        }
+        .right {
+            text-align: right;
+        }
+    ";
+
     builder
+    .epub_version(EpubVersion::V30)
+    .stylesheet(stylesheet.as_bytes()).context("Could not set stylesheet")?
     .metadata("author", "John McCrae").context("Could not set author metadata")?
     .metadata("title", book.title).context("Could not set title metadata")?
     .metadata("lang", "en-US").context("Could not set language metadata")?
@@ -196,9 +215,76 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
     })
 }
 
+fn style_classes(input: Node) -> String {
+    let mut properties = if let Some(style) = input.attr("style") {
+        let parsed: Vec<(&str, &str)> = style.split(";")
+            .map(|property|
+                property
+                    .split_once(":")
+                    .map(|(name, value)| (name.trim(), value.trim()))
+            )
+            .filter_map(|property| property)
+            .collect();
+        HashMap::from_iter(parsed)
+    } else {
+        HashMap::new()
+    };
+
+    let mut classes = Vec::new();
+
+    if let Some(padding_left) = properties.remove("padding-left") {
+        if padding_left == "30px" {
+            // Indentation in https://twigserial.wordpress.com/2016/12/24/lamb-arc-15/
+            classes.push("indent-one");
+        } else if padding_left == "40px" {
+            // Indentation in https://www.parahumans.net/2019/03/23/heavens-12-9/
+            // Indentation in https://palewebserial.wordpress.com/2020/11/21/cutting-class-6-8/
+            classes.push("indent-one");
+        } else if padding_left == "60px" {
+            // Nested indentation in https://twigserial.wordpress.com/2016/11/05/lamb-arc-14/
+            classes.push("indent-two");
+        } else if padding_left == "80px" {
+            // Nested indentation in https://palewebserial.wordpress.com/2022/02/08/gone-and-done-it-17-5/
+            classes.push("indent-two");
+        } else {
+            println!("Warning: Unknown indentation detected: {}", padding_left);
+        }
+    }
+
+    if let Some(text_align) = properties.remove("text-align") {
+        if text_align == "center" {
+            // Separator ☙ in https://twigserial.wordpress.com/2016/12/17/bitter-pill-15-15/
+            // Separator ■ in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
+            // Separator 🟂 in https://palewebserial.wordpress.com/2020/05/30/lost-for-words-1-7/
+            // Separator ⊙ in https://www.parahumans.net/2019/03/12/heavens-12-f/
+            classes.push("center");
+        } else if text_align == "right" {
+            // Quote attribution in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
+            classes.push("right");
+        } else if text_align == "left" {
+            // Ignore.
+        } else {
+            println!("Warning: Unknown alignment detected: {}", text_align);
+        }
+    }
+
+    if !properties.is_empty() {
+        println!("Warning: Unhandled properties:");
+        for (name, value) in properties {
+            println!("  {name}: {value};")
+        }
+    }
+
+    if classes.is_empty() {
+        "".to_string()
+    } else {
+        " class=\"".to_string() + &classes.join(" ") + "\""
+    }
+}
+
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
-    let mut input = input
+    let input = input
         .replace("&nbsp;", "&#160;")
         .replace("<br>", "<br></br>")
         .replace("& ", "&amp; ")
@@ -213,30 +299,19 @@ fn fixup_html(input: String) -> String {
     let re = Regex::new(
         r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
     ).unwrap();
-    let mut matches = Vec::new();
-    for captures in re.captures_iter(&input) {
-        let whole_match = captures.get(0).unwrap();
-        let data = captures.get(1).unwrap();
-        matches.push((
-            whole_match.start(),
-            whole_match.end(),
-            data.as_str().to_string(),
-        ));
-    }
-    for m in matches.iter().rev() {
-        let bytes = hex::decode(&m.2).expect("mangled email data is not a hex string");
+
+    re.replace_all(&input, |captures: &Captures| {
+        let data = captures.get(1).unwrap().as_str();
+        let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() > 4, "mangled email data not long enough");
         let key = bytes[0];
         let decoded = bytes[1..]
             .iter()
             .map(|byte| byte ^ key)
             .collect::<Vec<u8>>();
-        input.replace_range(
-            m.0..m.1,
-            std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string"),
-        );
-    }
-    input
+
+        std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").to_string()
+    }).to_string()
 }
 
 fn download_pages(
@@ -295,18 +370,18 @@ fn download_pages(
             title = "Bonds 1.1".to_string();
         }
         println!("Downloaded {}", title);
-        let arr = doc
+        let content_elems = doc
             .find(Descendant(
                 And(Name("div"), Class("entry-content")),
                 Or(Name("p"), Name("h1")),
             ))
             .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-            .collect::<Vec<Node>>();
-        let cont = arr.into_iter().fold("<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string()+&title+"</title><meta http-equiv='Content-Type' content ='text/html'></meta><!-- ePub title: \"" +&title+ "\" -->\n</head><body><h1>"+&title+"</h1>\n", |acc, x|{
-            acc + "<p>"+ &fixup_html(x.inner_html()) + "</p>\n"
-        })+"</body></html>";
+            .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
 
-        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).reftype(ReferenceType::Text))
+        let body_text = content_elems.collect::<Vec<String>>().join("\n");
+        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
+
+        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
 
         if title == "P.9" {
