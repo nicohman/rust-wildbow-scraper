@@ -12,5 +12,5 @@ regex = "1.3.7"
 hex = "0.4.2"
 easy-error = "1.0"
 epub-builder = "0.5"
-
+lazy_static = "1.4.0"
 

@@ -4,6 +4,8 @@ extern crate regex;
 extern crate reqwest;
 extern crate select;
 extern crate easy_error;
+#[macro_use]
+extern crate lazy_static;
 use structopt::StructOpt;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
 use regex::{Regex, Captures};
@@ -18,6 +20,13 @@ use std::iter::FromIterator;
 use std::collections::HashMap;
 use std::io::Write;
 use easy_error::{ResultExt, Error, err_msg};
+
+lazy_static! {
+    static ref OVERRIDE: HashMap<&'static str, &'static str> = {
+        let mut map = HashMap::new();
+        map.insert("Hard Pass - 22.4", "https://palewebserial.wordpress.com/2022/12/27/hard-pass-22-5/");
+    }
+}
 
 struct Book {
     title: &'static str,
@@ -389,13 +398,13 @@ fn download_pages(
         }
 
         if let Some(a_element) = next_page {
-            link = Some(page_url.join(a_element.attr("href")
-                                               .ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?
-                                      ).context("Could not resolve url")?)
+            link = Some(page_url.join(a_element.attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
         } else {
             link = None
         }
-
+        if let Some(url_str) = OVERRIDE.get(title) {
+            link = Some(Url::parse(url_str)?);
+        }
         chapter_number += 1
     }
     Ok(())
