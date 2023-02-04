@@ -1223,6 +1223,7 @@ dependencies = [
  "easy-error",
  "epub-builder",
  "hex",
+ "lazy_static",
  "regex",
  "reqwest",
  "select",
