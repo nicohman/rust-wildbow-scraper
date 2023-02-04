@@ -24,6 +24,9 @@ use easy_error::{ResultExt, Error, err_msg};
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
         ("Hard Pass – 22.4", "https://palewebserial.wordpress.com/2022/12/27/hard-pass-22-5/"),
+        ("Hard Pass – 22.6", "https://palewebserial.wordpress.com/2023/01/10/hard-pass-22-7/"),
+        ("Hard Pass – 22.7", "https://palewebserial.wordpress.com/2023/01/14/hard-pass-22-z/"),
+        ("Hard Pass – 22.z", "https://palewebserial.wordpress.com/2023/01/21/go-for-the-throat-23-1/"),
     ].map(|(title, url)| (title.to_string(), Url::parse(url).unwrap())));
 }
 
