@@ -27,6 +27,10 @@ lazy_static! {
         ("Hard Pass – 22.6", "https://palewebserial.wordpress.com/2023/01/10/hard-pass-22-7/"),
         ("Hard Pass – 22.7", "https://palewebserial.wordpress.com/2023/01/14/hard-pass-22-z/"),
         ("Hard Pass – 22.z", "https://palewebserial.wordpress.com/2023/01/21/go-for-the-throat-23-1/"),
+        ("Go for the Throat – 23.2", "https://palewebserial.wordpress.com/2023/02/07/go-for-the-throat-23-3/"),
+        ("Go for the Throat – 23.3","https://palewebserial.wordpress.com/2023/02/11/go-for-the-throat-23-4/"),
+        ("Go for the Throat – 23.4","https://palewebserial.wordpress.com/2023/02/14/go-for-the-throat-23-5/"),
+
     ].map(|(title, url)| (title.to_string(), Url::parse(url).unwrap())));
 }
 
