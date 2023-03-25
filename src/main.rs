@@ -34,6 +34,8 @@ lazy_static! {
         ("Go for the Throat – 23.6","https://palewebserial.wordpress.com/2023/02/28/go-for-the-throat-23-7/"),
         ("Go for the Throat – 23.7","https://palewebserial.wordpress.com/2023/03/04/go-for-the-throat-23-b/"),
         ("Go for the Throat – 23.b","https://palewebserial.wordpress.com/2023/03/11/go-for-the-throat-23-c/"),
+        ("Go for the Throat – 23.c","https://palewebserial.wordpress.com/2023/03/18/go-for-the-throat-23-8/"),
+        ("Go for the Throat – 23.8","https://palewebserial.wordpress.com/2023/03/21/go-for-the-throat-23-d/"),
     ].map(|(title, url)| (title.to_string(), Url::parse(url).unwrap())));
 }
 
