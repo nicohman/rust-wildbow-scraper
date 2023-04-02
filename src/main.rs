@@ -361,12 +361,13 @@ fn download_page<P: AsRef<Path>>(
     client: &Client,
     cache_dir: Option<P>,
     page_url: &Url,
+    skip_cache: bool,
 ) -> Result<(String, String, Option<Url>), Error> {
     let (page, is_cached) = match cache_dir {
         // Cache directory exists.
         Some(ref cache_path) => {
             let cached_page = cache_path.as_ref().join(page_url.to_string().replace("/", "%2F"));
-            if cached_page.exists() {
+            if !skip_cache && cached_page.exists() {
                 let cached_contents = std::fs::read(&cached_page).context(format!("Unable to load {:?} from cache", cached_page))?;
                 (String::from_utf8_lossy(&cached_contents).to_string(), true)
             } else {
@@ -399,7 +400,7 @@ fn download_page<P: AsRef<Path>>(
         let mut redirect_chars = redirect_url.chars();
         redirect_chars.nth(3); // skip over 'url='
         let page_url = page_url.join(redirect_chars.as_str()).context(format!("Could not resolve url '{}'", redirect_chars.as_str()))?;
-        return download_page(client, cache_dir, &page_url);
+        return download_page(client, cache_dir, &page_url, skip_cache);
     }
 
     let next_page = doc
@@ -446,6 +447,12 @@ fn download_page<P: AsRef<Path>>(
 
     let next_page_url = NEXT_LINK_OVERRIDES.get(&title).cloned().or(next_page_url);
 
+    if next_page_url.is_none() && is_cached {
+        // If this was a last chapter and it was cached, let’s try to refetch it
+        // in case there is a new chapter link available.
+        return download_page(client, cache_dir, page_url, true);
+    }
+
     Ok((body_text, title, next_page_url))
 }
 
@@ -466,6 +473,7 @@ fn download_pages<P: AsRef<Path>>(
             &client,
             cache_dir.as_ref(),
             &page_url,
+            false,
         )?;
 
         let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
