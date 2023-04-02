@@ -317,6 +317,17 @@ fn style_classes(input: Node) -> String {
     }
 }
 
+// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
+// javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
+//   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
+// Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
+// that allow for easy mutation, so let's just fix this up with a regex.
+lazy_static! {
+    static ref CLOUDFLARE_EMAIL_REGEX: Regex = Regex::new(
+        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
+    ).unwrap();
+}
+
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
     let input = input
@@ -326,16 +337,7 @@ fn fixup_html(input: String) -> String {
         .replace("<Walk or->", "&lt;Walk or-&gt;")
         .replace("<Walk!>", "&lt;Walk!&gt;");
 
-    // Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
-    // javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
-    //   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
-    // Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
-    // that allow for easy mutation, so let's just fix this up with a regex.
-    let re = Regex::new(
-        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
-    ).unwrap();
-
-    re.replace_all(&input, |captures: &Captures| {
+    CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
         let data = captures.get(1).unwrap().as_str();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() > 4, "mangled email data not long enough");
