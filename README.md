@@ -9,6 +9,7 @@ Automatically scrapes wildbow's web serials and compiles them into ebooks
 - Twig
 - Glow-worm
 - Ward
+- Pale (Minus Extra Materials and image content)
 
 ## Installation
 
