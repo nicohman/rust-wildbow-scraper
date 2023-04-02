@@ -1,4 +1,5 @@
 extern crate structopt;
+extern crate directories;
 extern crate epub_builder;
 extern crate regex;
 extern crate reqwest;
@@ -7,6 +8,7 @@ extern crate easy_error;
 #[macro_use]
 extern crate lazy_static;
 use structopt::StructOpt;
+use directories::ProjectDirs;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
 use regex::{Regex, Captures};
 use reqwest::blocking::Client;
@@ -14,11 +16,12 @@ use reqwest::Url;
 use select::document::Document;
 use select::node::Node;
 use select::predicate::{And, Class, Descendant, Name, Or};
-use std::fs::File;
+use std::fs::{File, create_dir_all};
 use std::io;
 use std::iter::FromIterator;
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::Path;
 use easy_error::{ResultExt, Error, err_msg};
 
 lazy_static! {
@@ -164,10 +167,16 @@ fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
 fn interpret_args() -> Result<(), Error> {
     let args = Args::from_args(); // parse command line arguments, print help messages, and make sure all the arguments are valid. This feature is provided by structopt
 
+    let proj_dirs = ProjectDirs::from("net", "Demenses",  "rust-wildbow-scraper");
+    let cache_dir = proj_dirs.as_ref().map(|dirs| dirs.cache_dir());
+    if let Some(cache_path) = cache_dir {
+        println!("Using cache directory: {:?}", cache_path);
+    }
+
     // an anonymous function which adds the book with name name to books if requested is true
     let add_book = |name, requested| {
         if requested {
-            process_book(download_book(get_info(name), args.covers)?)?;
+            process_book(download_book(cache_dir, name, args.covers)?)?;
         }
         let result: Result<(), Error> = Ok(());
         result
@@ -180,7 +189,12 @@ fn interpret_args() -> Result<(), Error> {
     add_book("twig", args.twig || args.all)
 }
 
-fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<DownloadedBook, Error> {
+fn download_book<P: AsRef<Path>>(
+    cache_dir: Option<P>,
+    name: &str,
+    download_cover_default: Option<bool>
+) -> Result<DownloadedBook, Error> {
+    let book = get_info(name);
 
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
@@ -227,7 +241,8 @@ fn download_book(book: Book, download_cover_default: Option<bool>) -> Result<Dow
         }
     }
     let page_url = Url::parse(&("https://".to_string() + &book.start)).context(format!("Could not create url from '{}'", book.start))?;
-    download_pages(Some(page_url), &mut builder, client)?;
+    let book_cache_dir = cache_dir.map(|dir| dir.as_ref().join(name));
+    download_pages(book_cache_dir, Some(page_url), &mut builder, client)?;
 
     Ok(DownloadedBook {
         title: book.title,
@@ -302,6 +317,17 @@ fn style_classes(input: Node) -> String {
     }
 }
 
+// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
+// javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
+//   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
+// Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
+// that allow for easy mutation, so let's just fix this up with a regex.
+lazy_static! {
+    static ref CLOUDFLARE_EMAIL_REGEX: Regex = Regex::new(
+        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
+    ).unwrap();
+}
+
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
     let input = input
@@ -311,16 +337,7 @@ fn fixup_html(input: String) -> String {
         .replace("<Walk or->", "&lt;Walk or-&gt;")
         .replace("<Walk!>", "&lt;Walk!&gt;");
 
-    // Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
-    // javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
-    //   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
-    // Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
-    // that allow for easy mutation, so let's just fix this up with a regex.
-    let re = Regex::new(
-        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
-    ).unwrap();
-
-    re.replace_all(&input, |captures: &Captures| {
+    CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
         let data = captures.get(1).unwrap().as_str();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() > 4, "mangled email data not long enough");
@@ -334,16 +351,40 @@ fn fixup_html(input: String) -> String {
     }).to_string()
 }
 
-fn download_pages(
+fn fetch(client: &Client, url: &Url) -> Result<String, Error> {
+    client.get(url.clone()).send().context(format!("Could not retrieve page {}", url))?
+                                .text().context("Could not get page text")
+}
+
+fn download_pages<P: AsRef<Path>>(
+    cache_dir: Option<P>,
     mut link: Option<Url>,
     builder: &mut EpubBuilder<ZipLibrary>,
     client: Client
 ) -> Result<(), Error> {
 
+    if let Some(ref cache_path) = cache_dir {
+        create_dir_all(cache_path).context(format!("Could not create cache directory {:?}", cache_path.as_ref()))?;
+    }
+
     let mut chapter_number = 1;
     while let Some(page_url) = link {
-        let page = client.get(page_url.clone()).send().context(format!("Could not retrieve page {}", page_url))?
-                                               .text().context("Could not get page text")?;
+        let (page, is_cached) = match cache_dir {
+            // Cache directory exists.
+            Some(ref cache_path) => {
+                let cached_page = cache_path.as_ref().join(page_url.to_string().replace("/", "%2F"));
+                if cached_page.exists() {
+                    let cached_contents = std::fs::read(&cached_page).context(format!("Unable to load {:?} from cache", cached_page))?;
+                    (String::from_utf8_lossy(&cached_contents).to_string(), true)
+                } else {
+                    let page = fetch(&client, &page_url)?;
+                    std::fs::write(cached_page, &page).context(format!("Could not cache {}", page_url))?;
+                    (page, false)
+                }
+            },
+            // No cache directory, fetch directly.
+            None => (fetch(&client, &page_url)?, false),
+        };
         let doc = Document::from(page.as_ref());
 
         // follow redirect if current page uses meta refresh to redirect
@@ -389,7 +430,11 @@ fn download_pages(
         if &title == "1.01" {
             title = "Bonds 1.1".to_string();
         }
-        println!("Downloaded {}", title);
+        if is_cached {
+            println!("Using {title} from cache for {page_url}");
+        } else {
+            println!("Downloaded {title} from {page_url}");
+        }
         let content_elems = doc
             .find(Descendant(
                 And(Name("div"), Class("entry-content")),
