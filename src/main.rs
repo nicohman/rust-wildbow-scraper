@@ -357,6 +357,98 @@ fn fetch(client: &Client, url: &Url) -> Result<String, Error> {
                                 .text().context("Could not get page text")
 }
 
+fn download_page<P: AsRef<Path>>(
+    client: &Client,
+    cache_dir: Option<P>,
+    page_url: &Url,
+) -> Result<(String, String, Option<Url>), Error> {
+    let (page, is_cached) = match cache_dir {
+        // Cache directory exists.
+        Some(ref cache_path) => {
+            let cached_page = cache_path.as_ref().join(page_url.to_string().replace("/", "%2F"));
+            if cached_page.exists() {
+                let cached_contents = std::fs::read(&cached_page).context(format!("Unable to load {:?} from cache", cached_page))?;
+                (String::from_utf8_lossy(&cached_contents).to_string(), true)
+            } else {
+                let page = fetch(client, page_url)?;
+                std::fs::write(cached_page, &page).context(format!("Could not cache {}", page_url))?;
+                (page, false)
+            }
+        },
+        // No cache directory, fetch directly.
+        None => (fetch(client, page_url)?, false),
+    };
+    let doc = Document::from(page.as_ref());
+
+    // follow redirect if current page uses meta refresh to redirect
+    let redirect = doc.find(Name("meta"))
+                      .filter(|node| {
+                          node.attr("http-equiv") == Some("refresh")
+                      })
+                      .filter_map(|node| {
+                          node.attr("content")
+                      })
+                      .flat_map(|content| {
+                          content.split(';')
+                                 .filter(|string| {
+                                     string.trim().to_lowercase().starts_with("url=")
+                                 })
+                      })
+                      .next();
+    if let Some(redirect_url) = redirect {
+        let mut redirect_chars = redirect_url.chars();
+        redirect_chars.nth(3); // skip over 'url='
+        let page_url = page_url.join(redirect_chars.as_str()).context(format!("Could not resolve url '{}'", redirect_chars.as_str()))?;
+        return download_page(client, cache_dir, &page_url);
+    }
+
+    let next_page = doc
+        .find(Name("a"))
+        .filter(|x| {
+            x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt"
+        })
+        .next();
+    let mut title = doc
+        .find(Name("title"))
+        .next().ok_or(err_msg("no element named 'title' on page"))?
+        .text()
+        .split("|")
+        .next().expect("split on string returned no elements")
+        .trim()
+        .replace(" - Parahumans 2", "")
+        .replace(" – Twig", "")
+        .replace("Glow-worm – ", "")
+        .replace("(Sequel is live!)", "")
+        .to_string();
+    if &title == "1.01" {
+        title = "Bonds 1.1".to_string();
+    }
+    if is_cached {
+        println!("Using {title} from cache for {page_url}");
+    } else {
+        println!("Downloaded {title} from {page_url}");
+    }
+    let content_elems = doc
+        .find(Descendant(
+            And(Name("div"), Class("entry-content")),
+            Or(Name("p"), Name("h1")),
+        ))
+        .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
+        .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
+
+    let body_text = content_elems.collect::<Vec<String>>().join("\n");
+
+    let next_page_url = if let Some(a_element) = next_page {
+        Some(page_url.join(a_element.attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
+    } else {
+        None
+    };
+
+    let next_page_url = NEXT_LINK_OVERRIDES.get(&title).cloned().or(next_page_url);
+
+    Ok((body_text, title, next_page_url))
+}
+
 fn download_pages<P: AsRef<Path>>(
     cache_dir: Option<P>,
     mut link: Option<Url>,
@@ -370,81 +462,12 @@ fn download_pages<P: AsRef<Path>>(
 
     let mut chapter_number = 1;
     while let Some(page_url) = link {
-        let (page, is_cached) = match cache_dir {
-            // Cache directory exists.
-            Some(ref cache_path) => {
-                let cached_page = cache_path.as_ref().join(page_url.to_string().replace("/", "%2F"));
-                if cached_page.exists() {
-                    let cached_contents = std::fs::read(&cached_page).context(format!("Unable to load {:?} from cache", cached_page))?;
-                    (String::from_utf8_lossy(&cached_contents).to_string(), true)
-                } else {
-                    let page = fetch(&client, &page_url)?;
-                    std::fs::write(cached_page, &page).context(format!("Could not cache {}", page_url))?;
-                    (page, false)
-                }
-            },
-            // No cache directory, fetch directly.
-            None => (fetch(&client, &page_url)?, false),
-        };
-        let doc = Document::from(page.as_ref());
+        let (body_text, title, next_page) = download_page(
+            &client,
+            cache_dir.as_ref(),
+            &page_url,
+        )?;
 
-        // follow redirect if current page uses meta refresh to redirect
-        let redirect = doc.find(Name("meta"))
-                          .filter(|node| {
-                              node.attr("http-equiv") == Some("refresh")
-                          })
-                          .filter_map(|node| {
-                              node.attr("content")
-                          })
-                          .flat_map(|content| {
-                              content.split(';')
-                                     .filter(|string| {
-                                         string.trim().to_lowercase().starts_with("url=")
-                                     })
-                          })
-                          .next();
-        if let Some(redirect_url) = redirect {
-            let mut redirect_chars = redirect_url.chars();
-            redirect_chars.nth(3); // skip over 'url='
-            link = Some(page_url.join(redirect_chars.as_str()).context(format!("Could not resolve url '{}'", redirect_chars.as_str()))?);
-            continue;
-        }
-
-        let next_page = doc
-            .find(Name("a"))
-            .filter(|x| {
-                x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt"
-            })
-            .next();
-        let mut title = doc
-            .find(Name("title"))
-            .next().ok_or(err_msg("no element named 'title' on page"))?
-            .text()
-            .split("|")
-            .next().expect("split on string returned no elements")
-            .trim()
-            .replace(" - Parahumans 2", "")
-            .replace(" – Twig", "")
-            .replace("Glow-worm – ", "")
-            .replace("(Sequel is live!)", "")
-            .to_string();
-        if &title == "1.01" {
-            title = "Bonds 1.1".to_string();
-        }
-        if is_cached {
-            println!("Using {title} from cache for {page_url}");
-        } else {
-            println!("Downloaded {title} from {page_url}");
-        }
-        let content_elems = doc
-            .find(Descendant(
-                And(Name("div"), Class("entry-content")),
-                Or(Name("p"), Name("h1")),
-            ))
-            .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-            .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
-
-        let body_text = content_elems.collect::<Vec<String>>().join("\n");
         let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
 
         builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
@@ -454,12 +477,8 @@ fn download_pages<P: AsRef<Path>>(
             break;
         }
 
-        if let Some(a_element) = next_page {
-            link = Some(page_url.join(a_element.attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
-        } else {
-            link = None
-        }
-        link = NEXT_LINK_OVERRIDES.get(&title).cloned().or(link);
+        link = next_page;
+
         chapter_number += 1
     }
     Ok(())
