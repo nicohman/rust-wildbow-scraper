@@ -3,7 +3,7 @@ extern crate directories;
 extern crate epub_builder;
 extern crate regex;
 extern crate reqwest;
-extern crate select;
+extern crate scraper;
 extern crate easy_error;
 #[macro_use]
 extern crate lazy_static;
@@ -16,9 +16,7 @@ use directories::ProjectDirs;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
 use regex::{Regex, Captures};
 use reqwest::Url;
-use select::document::Document;
-use select::node::Node;
-use select::predicate::{And, Class, Descendant, Name, Or};
+use scraper::{ElementRef, Html, Selector};
 use std::fs::File;
 use std::io;
 use std::iter::FromIterator;
@@ -258,8 +256,8 @@ fn download_book<P: AsRef<Path>>(
     })
 }
 
-fn style_classes(input: Node) -> String {
-    let mut properties = if let Some(style) = input.attr("style") {
+fn style_classes(input: ElementRef) -> String {
+    let mut properties = if let Some(style) = input.value().attr("style") {
         let parsed: Vec<(&str, &str)> = style.split(";")
             .map(|property|
                 property
@@ -336,6 +334,14 @@ lazy_static! {
     ).unwrap();
 }
 
+lazy_static! {
+    static ref META_REFRESH_SELECTOR: Selector = Selector::parse(r#"meta[http-equiv="refresh"]"#).unwrap();
+    static ref CONTENT_ELEMENT_SELECTOR: Selector = Selector::parse("div.entry-content p, div.entry-content h1").unwrap();
+    static ref NONTEXTUAL_ELEMENT_SELECTOR: Selector = Selector::parse("a, img").unwrap();
+    static ref LINK_SELECTOR: Selector = Selector::parse("a").unwrap();
+    static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
+}
+
 fn fixup_html(input: String) -> String {
     // Various entity replacements:
     let input = input
@@ -368,15 +374,12 @@ fn download_page(
     let is_cached = res.is_cached();
     let page = res.contents();
 
-    let doc = Document::from(page.as_ref());
+    let doc = Html::parse_document(page.as_ref());
 
     // follow redirect if current page uses meta refresh to redirect
-    let redirect = doc.find(Name("meta"))
-                      .filter(|node| {
-                          node.attr("http-equiv") == Some("refresh")
-                      })
-                      .filter_map(|node| {
-                          node.attr("content")
+    let redirect = doc.select(&META_REFRESH_SELECTOR)
+                      .filter_map(|elem| {
+                          elem.value().attr("content")
                       })
                       .flat_map(|content| {
                           content.split(';')
@@ -393,15 +396,17 @@ fn download_page(
     }
 
     let next_page = doc
-        .find(Name("a"))
+        .select(&LINK_SELECTOR)
         .filter(|x| {
-            x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt"
+            let text = x.text().collect::<String>();
+            let text = text.trim();
+            text == "Next Chapter" || text == "Next" || text == "ex Chapr" || text == "ext Chapt"
         })
         .next();
     let mut title = doc
-        .find(Name("title"))
+        .select(&TITLE_SELECTOR)
         .next().ok_or(err_msg("no element named 'title' on page"))?
-        .text()
+        .text().collect::<String>()
         .split("|")
         .next().expect("split on string returned no elements")
         .trim()
@@ -419,17 +424,14 @@ fn download_page(
         println!("Downloaded {title} from {page_url}");
     }
     let content_elems = doc
-        .find(Descendant(
-            And(Name("div"), Class("entry-content")),
-            Or(Name("p"), Name("h1")),
-        ))
-        .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
+        .select(&CONTENT_ELEMENT_SELECTOR)
+        .filter(|elem| elem.select(&NONTEXTUAL_ELEMENT_SELECTOR).next().is_none())
         .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
 
     let body_text = content_elems.collect::<Vec<String>>().join("\n");
 
     let next_page_url = if let Some(a_element) = next_page {
-        Some(page_url.join(a_element.attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
+        Some(page_url.join(a_element.value().attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
     } else {
         None
     };

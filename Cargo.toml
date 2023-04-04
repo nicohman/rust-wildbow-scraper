@@ -5,7 +5,6 @@ authors = ["Nico Hickman <nicohman@demenses.net>"]
 
 [dependencies]
 reqwest = { version = "0.11", features = ["blocking"] }
-select = "0.4.2"
 chrono = "0.4"
 directories = "5.0"
 structopt = "0.3.22"
@@ -14,4 +13,5 @@ hex = "0.4.2"
 easy-error = "1.0"
 epub-builder = "0.5"
 lazy_static = "1.4.0"
+scraper = "0.16.0"
 
