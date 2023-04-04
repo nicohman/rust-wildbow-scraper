@@ -49,6 +49,7 @@ struct Book {
     desc: &'static str,
     date: &'static str,
     cover: Option<&'static str>,
+    final_chapter_title: Option<&'static str>,
 }
 
 /// scrapes books written by Wildbow like Worm, Ward, Twig ETC and converts it to EPUB format.
@@ -98,6 +99,7 @@ fn get_info(key: &str) -> Option<Book> {
                 "An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons.",
             date: "Tue, 19 Nov 2013 00:00:00 +0100",
             cover: Some("https://i.imgur.com/g0fLbQ1.jpg"),
+            final_chapter_title: Some("Interlude: End"),
         },
         "pact" => Book {
             title: "Pact",
@@ -106,6 +108,7 @@ fn get_info(key: &str) -> Option<Book> {
                 "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             date: "Sat, 07 Mar 2015 00:00:00 +0100",
             cover: Some("https://preview.redd.it/9scpenoq5v671.png?width=1410&format=png&auto=webp&s=c17e05b90d886ed1858aed33fbeeee37ed35a711"),
+            final_chapter_title: Some("Epilogue"),
         },
         "twig" => Book {
             title: "Twig",
@@ -114,6 +117,7 @@ fn get_info(key: &str) -> Option<Book> {
                 "The year is 1921, and a little over a century has passed since a great mind unraveled the underpinnings of life itself.  Every week, it seems, the papers announce great advances, solving the riddle of immortality, successfully reviving the dead, the cloning of living beings, or blending of two animals into one.  For those on the ground, every week brings new mutterings of work taken by ‘stitched’ men of patchwork flesh that do not need to sleep, or more fearful glances as they have to step off the sidewalks to make room for great laboratory-grown beasts.  Often felt but rarely voiced is the notion that events are already spiraling out of the control of the academies that teach these things. It is only this generation, they say, that the youth and children are able to take the mad changes in stride, accepting it all as a part of day to day life.  Of those children, a small group of strange youths from the Lambsbridge Orphanage stand out, taking a more direct hand in events.",
             date: "Tue, 17 Oct 2017 00:00:00 +0200",
             cover: Some("https://i.imgur.com/3KeIJyz.jpg"),
+            final_chapter_title: Some("Forest for the Trees – e.4"),
         },
         "glow" => Book {
             title: "Glow-worm",
@@ -122,6 +126,7 @@ fn get_info(key: &str) -> Option<Book> {
                 "The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
             cover: None,
+            final_chapter_title: Some("P.9"),
         },
         "ward" => Book {
             title: "Ward",
@@ -129,7 +134,8 @@ fn get_info(key: &str) -> Option<Book> {
             desc: 
                 "The unwritten rules that govern the fights and outright wars between ‘capes’ have been amended: everyone gets their second chance.  It’s an uneasy thing to come to terms with when notorious supervillains and even monsters are playing at being hero.  The world ended two years ago, and as humanity straddles the old world and the new, there aren’t records, witnesses, or facilities to answer the villains’ past actions in the present.  One of many compromises, uneasy truces and deceptions that are starting to splinter as humanity rebuilds. None feel the injustice of this new status quo or the lack of established footing more than the past residents of the parahuman asylums.  The facilities hosted parahumans and their victims, but the facilities are ruined or gone; one of many fragile ex-patients is left to find a place in a fractured world.  She’s perhaps the person least suited to have anything to do with this tenuous peace or to stand alongside these false heroes.  She’s put in a position to make the decision: will she compromise to help forge what they call, with dark sentiment, a second golden age?  Or will she stand tall as a gilded dark age dawns?",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
-            cover: Some("https://i.redd.it/2c4czdyhnqv41.jpg")
+            cover: Some("https://i.redd.it/2c4czdyhnqv41.jpg"),
+            final_chapter_title: Some("Last – 20.end"),
         },
         "pale" => Book {
             title: "Pale",
@@ -137,6 +143,7 @@ fn get_info(key: &str) -> Option<Book> {
             desc: "There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies.",
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
+            final_chapter_title: None,
         },
         _ => return None,
     });
@@ -234,7 +241,7 @@ fn download_book<P: AsRef<Path>>(
     }
     let page_url = Url::parse(&book.start).context(format!("Could not create url from '{}'", book.start))?;
     let book_cache_dir = cache_dir.map(|dir| dir.as_ref().join(name));
-    download_pages(book_cache_dir, Some(page_url), &mut builder, client)?;
+    download_pages(book_cache_dir, &book, Some(page_url), &mut builder, client)?;
 
     Ok(DownloadedBook {
         title: book.title,
@@ -449,6 +456,7 @@ fn download_page<P: AsRef<Path>>(
 
 fn download_pages<P: AsRef<Path>>(
     cache_dir: Option<P>,
+    book: &Book,
     mut link: Option<Url>,
     builder: &mut EpubBuilder<ZipLibrary>,
     client: Client
@@ -472,7 +480,8 @@ fn download_pages<P: AsRef<Path>>(
         builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
 
-        if title == "P.9" {
+        if Some(title) == book.final_chapter_title.map(|title| title.to_string()) {
+            // Stop after the final chapter to avoid including e.g. retrospectives.
             break;
         }
 
