@@ -37,20 +37,6 @@ use xml_utils::{FilterableTree, html_attr_name, html_elem_name, XmlSerializable}
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
         ("Last – 20.e6", "https://www.parahumans.net/2020/05/02/last-20-end/"),
-        ("Hard Pass – 22.4", "https://palewebserial.wordpress.com/2022/12/27/hard-pass-22-5/"),
-        ("Hard Pass – 22.6", "https://palewebserial.wordpress.com/2023/01/10/hard-pass-22-7/"),
-        ("Hard Pass – 22.7", "https://palewebserial.wordpress.com/2023/01/14/hard-pass-22-z/"),
-        ("Hard Pass – 22.z", "https://palewebserial.wordpress.com/2023/01/21/go-for-the-throat-23-1/"),
-        ("Go for the Throat – 23.2", "https://palewebserial.wordpress.com/2023/02/07/go-for-the-throat-23-3/"),
-        ("Go for the Throat – 23.3","https://palewebserial.wordpress.com/2023/02/11/go-for-the-throat-23-4/"),
-        ("Go for the Throat – 23.4","https://palewebserial.wordpress.com/2023/02/14/go-for-the-throat-23-5/"),
-        ("Go for the Throat – 23.5","https://palewebserial.wordpress.com/2023/02/23/go-for-the-throat-23-6/"),
-        ("Go for the Throat – 23.6","https://palewebserial.wordpress.com/2023/02/28/go-for-the-throat-23-7/"),
-        ("Go for the Throat – 23.7","https://palewebserial.wordpress.com/2023/03/04/go-for-the-throat-23-b/"),
-        ("Go for the Throat – 23.b","https://palewebserial.wordpress.com/2023/03/11/go-for-the-throat-23-c/"),
-        ("Go for the Throat – 23.c","https://palewebserial.wordpress.com/2023/03/18/go-for-the-throat-23-8/"),
-        ("Go for the Throat – 23.8","https://palewebserial.wordpress.com/2023/03/21/go-for-the-throat-23-d/"),
-        ("Go for the Throat – 23.d","https://palewebserial.wordpress.com/2023/03/28/go-for-the-throat-23-9/"),
     ].map(|(title, url)| (title.to_string(), Url::parse(url).unwrap())));
 }
 
@@ -392,6 +378,7 @@ lazy_static! {
     static ref META_REFRESH_SELECTOR: Selector = Selector::parse(r#"meta[http-equiv="refresh"]"#).unwrap();
     static ref CONTENT_ELEMENT_SELECTOR: Selector = Selector::parse("div.entry-content p, div.entry-content h1").unwrap();
     static ref LINK_SELECTOR: Selector = Selector::parse("a").unwrap();
+    static ref NEXT_LINK_SELECTOR: Selector = Selector::parse(r#"a[rel="next"]"#).unwrap();
     static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
     static ref IMAGE_SELECTOR: Selector = Selector::parse("img").unwrap();
 }
@@ -496,14 +483,7 @@ fn download_page(
         return download_page(client, images, &page_url, skip_cache);
     }
 
-    let next_page = doc
-        .select(&LINK_SELECTOR)
-        .filter(|x| {
-            let text = x.text().collect::<String>();
-            let text = text.trim();
-            text == "Next Chapter" || text == "Next" || text == "ex Chapr" || text == "ext Chapt"
-        })
-        .next();
+    let next_page = doc.select(&NEXT_LINK_SELECTOR).next();
     let mut title = doc
         .select(&TITLE_SELECTOR)
         .next().ok_or(err_msg("no element named 'title' on page"))?
@@ -629,6 +609,14 @@ fn download_pages(
             false,
         )?;
 
+        link = next_page;
+
+        if title.starts_with("Glow-worm") && book.title == "Ward" {
+            // Glow-worm is also at the beginning of Ward.
+            println!("Skipping {title} since it is available separately.");
+            continue;
+        }
+
         let escaped_title = html_escape::encode_text(&title);
         let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &escaped_title + "</title><meta http-equiv='Content-Type' content ='text/html; charset=utf-8' />\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &escaped_title + "</h1>\n" + &body_text + "</body></html>";
 
@@ -645,8 +633,6 @@ fn download_pages(
             // Stop after the final chapter to avoid including e.g. retrospectives.
             break;
         }
-
-        link = next_page;
 
         chapter_number += 1
     }
