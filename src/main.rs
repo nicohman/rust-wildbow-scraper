@@ -93,7 +93,7 @@ fn get_info(key: &str) -> Option<Book> {
     return Some(match key {
         "worm" => Book {
             title: "Worm",
-            start: "parahumans.wordpress.com/2011/06/11/1-1/",
+            start: "https://parahumans.wordpress.com/2011/06/11/1-1/",
             desc: 
                 "An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons.",
             date: "Tue, 19 Nov 2013 00:00:00 +0100",
@@ -101,8 +101,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "pact" => Book {
             title: "Pact",
-            start: 
-                "pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
+            start: "https://pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
             desc: 
                 "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             date: "Sat, 07 Mar 2015 00:00:00 +0100",
@@ -110,7 +109,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "twig" => Book {
             title: "Twig",
-            start: "twigserial.wordpress.com/2014/12/24/taking-root-1-1/",
+            start: "https://twigserial.wordpress.com/2014/12/24/taking-root-1-1/",
             desc: 
                 "The year is 1921, and a little over a century has passed since a great mind unraveled the underpinnings of life itself.  Every week, it seems, the papers announce great advances, solving the riddle of immortality, successfully reviving the dead, the cloning of living beings, or blending of two animals into one.  For those on the ground, every week brings new mutterings of work taken by ‘stitched’ men of patchwork flesh that do not need to sleep, or more fearful glances as they have to step off the sidewalks to make room for great laboratory-grown beasts.  Often felt but rarely voiced is the notion that events are already spiraling out of the control of the academies that teach these things. It is only this generation, they say, that the youth and children are able to take the mad changes in stride, accepting it all as a part of day to day life.  Of those children, a small group of strange youths from the Lambsbridge Orphanage stand out, taking a more direct hand in events.",
             date: "Tue, 17 Oct 2017 00:00:00 +0200",
@@ -118,7 +117,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "glow" => Book {
             title: "Glow-worm",
-            start: "parahumans.wordpress.com/2017/10/21/glowworm-p-1/",
+            start: "https://parahumans.wordpress.com/2017/10/21/glowworm-p-1/",
             desc: 
                 "The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
@@ -126,7 +125,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "ward" => Book {
             title: "Ward",
-            start: "parahumans.net/2017/09/11/daybreak-1-1/",
+            start: "https://parahumans.net/2017/09/11/daybreak-1-1/",
             desc: 
                 "The unwritten rules that govern the fights and outright wars between ‘capes’ have been amended: everyone gets their second chance.  It’s an uneasy thing to come to terms with when notorious supervillains and even monsters are playing at being hero.  The world ended two years ago, and as humanity straddles the old world and the new, there aren’t records, witnesses, or facilities to answer the villains’ past actions in the present.  One of many compromises, uneasy truces and deceptions that are starting to splinter as humanity rebuilds. None feel the injustice of this new status quo or the lack of established footing more than the past residents of the parahuman asylums.  The facilities hosted parahumans and their victims, but the facilities are ruined or gone; one of many fragile ex-patients is left to find a place in a fractured world.  She’s perhaps the person least suited to have anything to do with this tenuous peace or to stand alongside these false heroes.  She’s put in a position to make the decision: will she compromise to help forge what they call, with dark sentiment, a second golden age?  Or will she stand tall as a gilded dark age dawns?",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
@@ -134,7 +133,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "pale" => Book {
             title: "Pale",
-            start: "palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/",
+            start: "https://palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/",
             desc: "There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies.",
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
@@ -233,7 +232,7 @@ fn download_book<P: AsRef<Path>>(
                    .context("Could not add cover image")?;
         }
     }
-    let page_url = Url::parse(&("https://".to_string() + &book.start)).context(format!("Could not create url from '{}'", book.start))?;
+    let page_url = Url::parse(&book.start).context(format!("Could not create url from '{}'", book.start))?;
     let book_cache_dir = cache_dir.map(|dir| dir.as_ref().join(name));
     download_pages(book_cache_dir, Some(page_url), &mut builder, client)?;
 
