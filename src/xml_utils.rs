@@ -1,5 +1,5 @@
 use ego_tree::iter::{Edge, Traverse};
-use markup5ever::{LocalName, QualName};
+use markup5ever::{LocalName, Namespace, QualName};
 use scraper::node::Element;
 use scraper::{ElementRef, Node};
 #[cfg(test)]
@@ -36,6 +36,11 @@ impl<'a> XmlSerializable for ElementRef<'a> {
 /// Creates a qualified name for a HTML element.
 pub fn html_elem_name(name: &str) -> QualName {
     QualName::new(None, ns!(html), LocalName::from(name))
+}
+
+/// Creates a qualified name for a HTML attribute.
+pub fn html_attr_name(name: &str) -> QualName {
+    QualName::new(None, Namespace::from(""), LocalName::from(name))
 }
 
 /// Helper trait that will allow us to call `text_filter` on `ElementRef`.
