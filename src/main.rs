@@ -89,8 +89,8 @@ fn main() -> Result<(), Error> {
     interpret_args()
 }
 
-fn get_info(key: &str) -> Book {
-    return match key {
+fn get_info(key: &str) -> Option<Book> {
+    return Some(match key {
         "worm" => Book {
             title: "Worm",
             start: "parahumans.wordpress.com/2011/06/11/1-1/",
@@ -139,16 +139,8 @@ fn get_info(key: &str) -> Book {
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
         },
-        _ => Book {
-            title: "Worm",
-            start: "parahumans.wordpress.com/2011/06/11/1-1/",
-            desc: 
-                "An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons.",
-            date: "Tue, 19 Nov 2013 00:00:00 +0100",
-            cover: Some("https://i.imgur.com/g0fLbQ1.jpg"),
-        },
-
-    };
+        _ => return None,
+    });
 }
 
 fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
@@ -195,7 +187,7 @@ fn download_book<P: AsRef<Path>>(
     name: &str,
     download_cover_default: Option<bool>
 ) -> Result<DownloadedBook, Error> {
-    let book = get_info(name);
+    let book = get_info(name).ok_or(err_msg(format!("Unknown book {name}")))?;
 
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
