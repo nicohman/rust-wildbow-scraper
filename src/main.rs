@@ -4,6 +4,7 @@ extern crate ego_tree;
 extern crate epub_builder;
 #[macro_use]
 extern crate html5ever;
+extern crate html_escape;
 extern crate markup5ever;
 extern crate regex;
 extern crate reqwest;
@@ -628,9 +629,16 @@ fn download_pages(
             false,
         )?;
 
-        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html; charset=utf-8' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
+        let escaped_title = html_escape::encode_text(&title);
+        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &escaped_title + "</title><meta http-equiv='Content-Type' content ='text/html; charset=utf-8' />\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &escaped_title + "</h1>\n" + &body_text + "</body></html>";
 
-        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
+        // Title here should not need to be escaped but unfortunately,
+        // without this the nav.xhtml will contain unescaped &.
+        // And we cannot just escape it ourseves or it will be double escaped in toc.ncx.
+        // Let’s replace it with small ampersand Unicode character.
+        // https://github.com/lise-henry/epub-builder/pull/41
+        let title_clean = title.replace("&", "﹠");
+        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title_clean).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
 
         if Some(title) == book.final_chapter_title.map(|title| title.to_string()) {

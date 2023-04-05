@@ -1411,6 +1411,7 @@ dependencies = [
  "ego-tree",
  "epub-builder",
  "hex",
+ "html-escape",
  "html5ever",
  "lazy_static",
  "markup5ever",

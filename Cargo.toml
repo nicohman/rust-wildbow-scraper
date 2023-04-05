@@ -16,6 +16,7 @@ lazy_static = "1.4.0"
 scraper = "0.16.0"
 ego-tree = "0.6.2"
 html5ever = "0.26.0"
+html-escape = "0.2.13"
 markup5ever = "0.11.0"
 xml5ever = "0.17.0"
 
