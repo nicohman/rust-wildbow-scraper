@@ -30,6 +30,7 @@ use xml_utils::XmlSerializable;
 
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
+        ("Last – 20.e6", "https://www.parahumans.net/2020/05/02/last-20-end/"),
         ("Hard Pass – 22.4", "https://palewebserial.wordpress.com/2022/12/27/hard-pass-22-5/"),
         ("Hard Pass – 22.6", "https://palewebserial.wordpress.com/2023/01/10/hard-pass-22-7/"),
         ("Hard Pass – 22.7", "https://palewebserial.wordpress.com/2023/01/14/hard-pass-22-z/"),
