@@ -7,8 +7,10 @@ extern crate scraper;
 extern crate easy_error;
 #[macro_use]
 extern crate lazy_static;
+extern crate xml5ever;
 
 mod cached_client;
+mod xml_utils;
 
 use cached_client::CachedClient;
 use structopt::StructOpt;
@@ -24,6 +26,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use easy_error::{ResultExt, Error, err_msg};
+use xml_utils::XmlSerializable;
 
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
@@ -343,14 +346,6 @@ lazy_static! {
 }
 
 fn fixup_html(input: String) -> String {
-    // Various entity replacements:
-    let input = input
-        .replace("&nbsp;", "&#160;")
-        .replace("<br>", "<br></br>")
-        .replace("& ", "&amp; ")
-        .replace("<Walk or->", "&lt;Walk or-&gt;")
-        .replace("<Walk!>", "&lt;Walk!&gt;");
-
     CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
         let data = captures.get(1).unwrap().as_str();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
@@ -426,7 +421,7 @@ fn download_page(
     let content_elems = doc
         .select(&CONTENT_ELEMENT_SELECTOR)
         .filter(|elem| elem.select(&NONTEXTUAL_ELEMENT_SELECTOR).next().is_none())
-        .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
+        .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_xml()) + "</p>");
 
     let body_text = content_elems.collect::<Vec<String>>().join("\n");
 
