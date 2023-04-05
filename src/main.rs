@@ -387,7 +387,7 @@ fn fixup_html(input: String) -> String {
     CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
         let data = captures.get(1).unwrap().as_str();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
-        assert!(bytes.len() > 4, "mangled email data not long enough");
+        assert!(bytes.len() >= 4, "mangled email data not long enough");
         let key = bytes[0];
         let decoded = bytes[1..]
             .iter()
