@@ -1,6 +1,10 @@
 extern crate structopt;
 extern crate directories;
+extern crate ego_tree;
 extern crate epub_builder;
+#[macro_use]
+extern crate html5ever;
+extern crate markup5ever;
 extern crate regex;
 extern crate reqwest;
 extern crate scraper;
@@ -26,7 +30,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use easy_error::{ResultExt, Error, err_msg};
-use xml_utils::XmlSerializable;
+use xml_utils::{html_elem_name, FilterableTree, XmlSerializable};
 
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
@@ -380,7 +384,7 @@ lazy_static! {
 lazy_static! {
     static ref META_REFRESH_SELECTOR: Selector = Selector::parse(r#"meta[http-equiv="refresh"]"#).unwrap();
     static ref CONTENT_ELEMENT_SELECTOR: Selector = Selector::parse("div.entry-content p, div.entry-content h1").unwrap();
-    static ref NONTEXTUAL_ELEMENT_SELECTOR: Selector = Selector::parse("a, img").unwrap();
+    static ref NONTEXTUAL_ELEMENT_SELECTOR: Selector = Selector::parse("img").unwrap();
     static ref LINK_SELECTOR: Selector = Selector::parse("a").unwrap();
     static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
 }
@@ -460,7 +464,13 @@ fn download_page(
     }
     let content_elems = doc
         .select(&CONTENT_ELEMENT_SELECTOR)
+        // Remove paragraphs containing images as we cannot handle them.
         .filter(|elem| elem.select(&NONTEXTUAL_ELEMENT_SELECTOR).next().is_none())
+        .filter(|elem| {
+            // Remove paragraphs which only have text inside links.
+            // Those are probably “Next/Previous Chapter” links.
+            ! elem.text_filter(|elem| elem.name != html_elem_name("a")).collect::<String>().trim().is_empty()
+        })
         .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_xml()) + "</p>");
 
     let body_text = content_elems.collect::<Vec<String>>().join("\n");

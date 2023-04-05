@@ -14,5 +14,8 @@ easy-error = "1.0"
 epub-builder = "0.5"
 lazy_static = "1.4.0"
 scraper = "0.16.0"
+ego-tree = "0.6.2"
+html5ever = "0.26.0"
+markup5ever = "0.11.0"
 xml5ever = "0.17.0"
 
