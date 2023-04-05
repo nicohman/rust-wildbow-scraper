@@ -168,6 +168,45 @@ fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
     Ok(buf.trim() == "y" || buf.trim() == "yes")
 }
 
+#[derive(Debug)]
+enum MediaType {
+    Jpeg,
+    Png,
+    Svg,
+}
+
+impl MediaType {
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+            Self::Svg => "image/svg+xml",
+        }
+    }
+
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::Jpeg => "jpg",
+            Self::Png => "png",
+            Self::Svg => "svg",
+        }
+    }
+
+    pub fn from_url(url: &Url) -> Result<Self, Error> {
+        let extension = url.path().split('.').last().ok_or(err_msg(format!("Cannot obtain without suffix specified: {url}")))?;
+
+        if extension == "png" {
+            Ok(Self::Png)
+        } else if extension == "svg" {
+            Ok(Self::Svg)
+        } else if extension == "jpg" || extension == "jpeg" {
+            Ok(Self::Jpeg)
+        } else {
+            Err(err_msg(format!("Given URL probably is not one of the supported media types: {url}")))
+        }
+    }
+}
+
 fn interpret_args() -> Result<(), Error> {
     let args = Args::from_args(); // parse command line arguments, print help messages, and make sure all the arguments are valid. This feature is provided by structopt
 
@@ -244,8 +283,8 @@ fn download_book<P: AsRef<Path>>(
                 println!("Downloaded cover from {cover}");
             }
             let data = res.contents();
-            let filetype = cover_url.path().split('.').last().expect(&format!("cover file without suffix specified: {}", cover));
-            builder.add_cover_image(format!("cover.{}", filetype), &**data, format!("image/{}", filetype))
+            let filetype = MediaType::from_url(&cover_url)?;
+            builder.add_cover_image(format!("cover.{}", filetype.extension()), &**data, filetype.content_type())
                    .context("Could not add cover image")?;
         } else {
             println!("Not using cover.");
