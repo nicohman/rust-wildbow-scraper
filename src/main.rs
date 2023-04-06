@@ -1,45 +1,42 @@
 extern crate structopt;
 extern crate directories;
+extern crate ego_tree;
 extern crate epub_builder;
+#[macro_use]
+extern crate html5ever;
+extern crate html_escape;
+extern crate markup5ever;
 extern crate regex;
 extern crate reqwest;
-extern crate select;
+extern crate scraper;
 extern crate easy_error;
 #[macro_use]
 extern crate lazy_static;
+extern crate xml5ever;
+
+mod cached_client;
+mod xml_utils;
+
+use cached_client::CachedClient;
+use html5ever::tree_builder::{Attribute, ElementFlags, NodeOrText, TreeSink};
 use structopt::StructOpt;
 use directories::ProjectDirs;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
 use regex::{Regex, Captures};
-use reqwest::blocking::Client;
 use reqwest::Url;
-use select::document::Document;
-use select::node::Node;
-use select::predicate::{And, Class, Descendant, Name, Or};
-use std::fs::{File, create_dir_all};
+use scraper::{ElementRef, Html, Selector};
+use std::fs::File;
 use std::io;
 use std::iter::FromIterator;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use easy_error::{ResultExt, Error, err_msg};
+use xml_utils::{FilterableTree, html_attr_name, html_elem_name, XmlSerializable};
 
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
-        ("Hard Pass – 22.4", "https://palewebserial.wordpress.com/2022/12/27/hard-pass-22-5/"),
-        ("Hard Pass – 22.6", "https://palewebserial.wordpress.com/2023/01/10/hard-pass-22-7/"),
-        ("Hard Pass – 22.7", "https://palewebserial.wordpress.com/2023/01/14/hard-pass-22-z/"),
-        ("Hard Pass – 22.z", "https://palewebserial.wordpress.com/2023/01/21/go-for-the-throat-23-1/"),
-        ("Go for the Throat – 23.2", "https://palewebserial.wordpress.com/2023/02/07/go-for-the-throat-23-3/"),
-        ("Go for the Throat – 23.3","https://palewebserial.wordpress.com/2023/02/11/go-for-the-throat-23-4/"),
-        ("Go for the Throat – 23.4","https://palewebserial.wordpress.com/2023/02/14/go-for-the-throat-23-5/"),
-        ("Go for the Throat – 23.5","https://palewebserial.wordpress.com/2023/02/23/go-for-the-throat-23-6/"),
-        ("Go for the Throat – 23.6","https://palewebserial.wordpress.com/2023/02/28/go-for-the-throat-23-7/"),
-        ("Go for the Throat – 23.7","https://palewebserial.wordpress.com/2023/03/04/go-for-the-throat-23-b/"),
-        ("Go for the Throat – 23.b","https://palewebserial.wordpress.com/2023/03/11/go-for-the-throat-23-c/"),
-        ("Go for the Throat – 23.c","https://palewebserial.wordpress.com/2023/03/18/go-for-the-throat-23-8/"),
-        ("Go for the Throat – 23.8","https://palewebserial.wordpress.com/2023/03/21/go-for-the-throat-23-d/"),
-        ("Go for the Throat – 23.d","https://palewebserial.wordpress.com/2023/03/28/go-for-the-throat-23-9/"),
+        ("Last – 20.e6", "https://www.parahumans.net/2020/05/02/last-20-end/"),
     ].map(|(title, url)| (title.to_string(), Url::parse(url).unwrap())));
 }
 
@@ -49,6 +46,7 @@ struct Book {
     desc: &'static str,
     date: &'static str,
     cover: Option<&'static str>,
+    final_chapter_title: Option<&'static str>,
 }
 
 /// scrapes books written by Wildbow like Worm, Ward, Twig ETC and converts it to EPUB format.
@@ -89,66 +87,63 @@ fn main() -> Result<(), Error> {
     interpret_args()
 }
 
-fn get_info(key: &str) -> Book {
-    return match key {
+fn get_info(key: &str) -> Option<Book> {
+    return Some(match key {
         "worm" => Book {
             title: "Worm",
-            start: "parahumans.wordpress.com/2011/06/11/1-1/",
+            start: "https://parahumans.wordpress.com/2011/06/11/1-1/",
             desc: 
                 "An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons.",
             date: "Tue, 19 Nov 2013 00:00:00 +0100",
             cover: Some("https://i.imgur.com/g0fLbQ1.jpg"),
+            final_chapter_title: Some("Interlude: End"),
         },
         "pact" => Book {
             title: "Pact",
-            start: 
-                "pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
+            start: "https://pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
             desc: 
                 "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             date: "Sat, 07 Mar 2015 00:00:00 +0100",
             cover: Some("https://preview.redd.it/9scpenoq5v671.png?width=1410&format=png&auto=webp&s=c17e05b90d886ed1858aed33fbeeee37ed35a711"),
+            final_chapter_title: Some("Epilogue"),
         },
         "twig" => Book {
             title: "Twig",
-            start: "twigserial.wordpress.com/2014/12/24/taking-root-1-1/",
+            start: "https://twigserial.wordpress.com/2014/12/24/taking-root-1-1/",
             desc: 
                 "The year is 1921, and a little over a century has passed since a great mind unraveled the underpinnings of life itself.  Every week, it seems, the papers announce great advances, solving the riddle of immortality, successfully reviving the dead, the cloning of living beings, or blending of two animals into one.  For those on the ground, every week brings new mutterings of work taken by ‘stitched’ men of patchwork flesh that do not need to sleep, or more fearful glances as they have to step off the sidewalks to make room for great laboratory-grown beasts.  Often felt but rarely voiced is the notion that events are already spiraling out of the control of the academies that teach these things. It is only this generation, they say, that the youth and children are able to take the mad changes in stride, accepting it all as a part of day to day life.  Of those children, a small group of strange youths from the Lambsbridge Orphanage stand out, taking a more direct hand in events.",
             date: "Tue, 17 Oct 2017 00:00:00 +0200",
             cover: Some("https://i.imgur.com/3KeIJyz.jpg"),
+            final_chapter_title: Some("Forest for the Trees – e.4"),
         },
         "glow" => Book {
             title: "Glow-worm",
-            start: "parahumans.wordpress.com/2017/10/21/glowworm-p-1/",
+            start: "https://parahumans.wordpress.com/2017/10/21/glowworm-p-1/",
             desc: 
                 "The bridge between Worm and Ward, Glow-worm introduces readers to the characters of Ward, and the consequences of Gold Morning",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
             cover: None,
+            final_chapter_title: Some("P.9"),
         },
         "ward" => Book {
             title: "Ward",
-            start: "parahumans.net/2017/09/11/daybreak-1-1/",
+            start: "https://parahumans.net/2017/09/11/daybreak-1-1/",
             desc: 
                 "The unwritten rules that govern the fights and outright wars between ‘capes’ have been amended: everyone gets their second chance.  It’s an uneasy thing to come to terms with when notorious supervillains and even monsters are playing at being hero.  The world ended two years ago, and as humanity straddles the old world and the new, there aren’t records, witnesses, or facilities to answer the villains’ past actions in the present.  One of many compromises, uneasy truces and deceptions that are starting to splinter as humanity rebuilds. None feel the injustice of this new status quo or the lack of established footing more than the past residents of the parahuman asylums.  The facilities hosted parahumans and their victims, but the facilities are ruined or gone; one of many fragile ex-patients is left to find a place in a fractured world.  She’s perhaps the person least suited to have anything to do with this tenuous peace or to stand alongside these false heroes.  She’s put in a position to make the decision: will she compromise to help forge what they call, with dark sentiment, a second golden age?  Or will she stand tall as a gilded dark age dawns?",
             date: "Sat, 11 Nov 2017 00:00:00 +0100",
-            cover: Some("https://i.redd.it/2c4czdyhnqv41.jpg")
+            cover: Some("https://i.redd.it/2c4czdyhnqv41.jpg"),
+            final_chapter_title: Some("Last – 20.end"),
         },
         "pale" => Book {
             title: "Pale",
-            start: "palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/",
+            start: "https://palewebserial.wordpress.com/2020/05/05/blood-run-cold-0-0/",
             desc: "There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies.",
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
+            final_chapter_title: None,
         },
-        _ => Book {
-            title: "Worm",
-            start: "parahumans.wordpress.com/2011/06/11/1-1/",
-            desc: 
-                "An introverted teenage girl with an unconventional superpower, Taylor goes out in costume to find escape from a deeply unhappy and frustrated civilian life. Her first attempt at taking down a supervillain sees her mistaken for one, thrusting her into the midst of the local ‘cape’ scene’s politics, unwritten rules, and ambiguous morals. As she risks life and limb, Taylor faces the dilemma of having to do the wrong things for the right reasons.",
-            date: "Tue, 19 Nov 2013 00:00:00 +0100",
-            cover: Some("https://i.imgur.com/g0fLbQ1.jpg"),
-        },
-
-    };
+        _ => return None,
+    });
 }
 
 fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
@@ -163,6 +158,45 @@ fn prompt_cover(title: &str, url: &str) -> Result<bool, Error> {
     reader.read_line(&mut buf).context("Could not read line")?;
 
     Ok(buf.trim() == "y" || buf.trim() == "yes")
+}
+
+#[derive(Debug)]
+enum MediaType {
+    Jpeg,
+    Png,
+    Svg,
+}
+
+impl MediaType {
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+            Self::Svg => "image/svg+xml",
+        }
+    }
+
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::Jpeg => "jpg",
+            Self::Png => "png",
+            Self::Svg => "svg",
+        }
+    }
+
+    pub fn from_url(url: &Url) -> Result<Self, Error> {
+        let extension = url.path().split('.').last().ok_or(err_msg(format!("Cannot obtain without suffix specified: {url}")))?;
+
+        if extension == "png" {
+            Ok(Self::Png)
+        } else if extension == "svg" {
+            Ok(Self::Svg)
+        } else if extension == "jpg" || extension == "jpeg" {
+            Ok(Self::Jpeg)
+        } else {
+            Err(err_msg(format!("Given URL probably is not one of the supported media types: {url}")))
+        }
+    }
 }
 
 fn interpret_args() -> Result<(), Error> {
@@ -195,7 +229,7 @@ fn download_book<P: AsRef<Path>>(
     name: &str,
     download_cover_default: Option<bool>
 ) -> Result<DownloadedBook, Error> {
-    let book = get_info(name);
+    let book = get_info(name).ok_or(err_msg(format!("Unknown book {name}")))?;
 
     let mut builder = EpubBuilder::new(ZipLibrary::new().context("Could not create ZipLibrary")?).context("Could not create EpubBuilder")?;
 
@@ -206,11 +240,16 @@ fn download_book<P: AsRef<Path>>(
         .indent-two {
             margin-left: 4em;
         }
-        .center {
+        .aligncenter, .center {
             text-align: center;
         }
         .right {
             text-align: right;
+        }
+        .size-full {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
         }
     ";
 
@@ -224,26 +263,32 @@ fn download_book<P: AsRef<Path>>(
     // date metadata not yet supported
     //.metadata(book.date)?
 
-    let client = Client::new();
+    let book_cache_dir = cache_dir.map(|dir| dir.as_ref().join(name));
+    let client = CachedClient::new(book_cache_dir)?;
 
     if let Some(cover) = book.cover {
         let download_cover = match download_cover_default {
             Some(download) => download,
             None => prompt_cover(book.title, cover)?
         };
-        println!("download cover?: {}", download_cover);
         if download_cover {
             let cover_url = Url::parse(&cover).context(format!("Could not construct url from '{}'", cover))?;
-            let data = client.get(cover_url.clone()).send().context(format!("Could not send request to url '{}'", cover_url))?
-                                            .bytes().context(format!("Could not retrieve data from url '{}", cover_url))?;
-            let filetype = cover_url.path().split('.').last().expect(&format!("cover file without suffix specified: {}", cover));
-            builder.add_cover_image(format!("cover.{}", filetype), data.as_ref(), format!("image/{}", filetype))
+            let res = client.fetch::<Vec<u8>>(&cover_url, false).context(format!("Could not retrieve data from url '{}", cover_url))?;
+            if res.is_cached() {
+                println!("Using cover from cache for {cover}");
+            } else {
+                println!("Downloaded cover from {cover}");
+            }
+            let data = res.contents();
+            let filetype = MediaType::from_url(&cover_url)?;
+            builder.add_cover_image(format!("cover.{}", filetype.extension()), &**data, filetype.content_type())
                    .context("Could not add cover image")?;
+        } else {
+            println!("Not using cover.");
         }
     }
-    let page_url = Url::parse(&("https://".to_string() + &book.start)).context(format!("Could not create url from '{}'", book.start))?;
-    let book_cache_dir = cache_dir.map(|dir| dir.as_ref().join(name));
-    download_pages(book_cache_dir, Some(page_url), &mut builder, client)?;
+    let page_url = Url::parse(&book.start).context(format!("Could not create url from '{}'", book.start))?;
+    download_pages(&book, Some(page_url), &mut builder, client)?;
 
     Ok(DownloadedBook {
         title: book.title,
@@ -251,8 +296,8 @@ fn download_book<P: AsRef<Path>>(
     })
 }
 
-fn style_classes(input: Node) -> String {
-    let mut properties = if let Some(style) = input.attr("style") {
+fn style_classes(input: ElementRef) -> String {
+    let mut properties = if let Some(style) = input.value().attr("style") {
         let parsed: Vec<(&str, &str)> = style.split(";")
             .map(|property|
                 property
@@ -329,19 +374,20 @@ lazy_static! {
     ).unwrap();
 }
 
-fn fixup_html(input: String) -> String {
-    // Various entity replacements:
-    let input = input
-        .replace("&nbsp;", "&#160;")
-        .replace("<br>", "<br></br>")
-        .replace("& ", "&amp; ")
-        .replace("<Walk or->", "&lt;Walk or-&gt;")
-        .replace("<Walk!>", "&lt;Walk!&gt;");
+lazy_static! {
+    static ref META_REFRESH_SELECTOR: Selector = Selector::parse(r#"meta[http-equiv="refresh"]"#).unwrap();
+    static ref CONTENT_ELEMENT_SELECTOR: Selector = Selector::parse("div.entry-content p, div.entry-content h1").unwrap();
+    static ref LINK_SELECTOR: Selector = Selector::parse("a").unwrap();
+    static ref NEXT_LINK_SELECTOR: Selector = Selector::parse(r#"a[rel="next"]"#).unwrap();
+    static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
+    static ref IMAGE_SELECTOR: Selector = Selector::parse("img").unwrap();
+}
 
+fn fixup_html(input: String) -> String {
     CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
         let data = captures.get(1).unwrap().as_str();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
-        assert!(bytes.len() > 4, "mangled email data not long enough");
+        assert!(bytes.len() >= 4, "mangled email data not long enough");
         let key = bytes[0];
         let decoded = bytes[1..]
             .iter()
@@ -352,42 +398,76 @@ fn fixup_html(input: String) -> String {
     }).to_string()
 }
 
-fn fetch(client: &Client, url: &Url) -> Result<String, Error> {
-    client.get(url.clone()).send().context(format!("Could not retrieve page {}", url))?
-                                .text().context("Could not get page text")
+/// Creates a copy of given image element with cleaned up attributes.
+fn clean_up_image(img: &ElementRef, new_src: &str) -> String {
+    let mut attrs = Vec::new();
+    let img_elem = img.value();
+    for (name, value) in &img_elem.attrs {
+        if name == &html_attr_name("srcset") || name == &html_attr_name("sizes") || name == &html_attr_name("loading") {
+            // Since we will not download all the differently size versions,
+            // let’s ignore srcset & other related attributes.
+            // The other sizes are auto-generated by WordPress anyway.
+            continue;
+        } else if name == &html_attr_name("src") {
+            // Replace src.
+            attrs.push(Attribute {
+                name: name.clone(),
+                value: new_src.into(),
+            });
+        } else {
+            // Keep other attributes as they are.
+            attrs.push(Attribute {
+                name: name.clone(),
+                value: value.clone(),
+            });
+        }
+    }
+
+    let mut frag = Html::new_fragment();
+    let new_img = frag.create_element(
+        html_elem_name("img"),
+        attrs,
+        ElementFlags::default(),
+    );
+    let frag_doc = frag.get_document();
+    frag.append(&frag_doc, NodeOrText::AppendNode(new_img));
+
+    let new_img_elem = frag.select(&IMAGE_SELECTOR).next().expect("No image found.");
+
+    new_img_elem.xml()
 }
 
-fn download_page<P: AsRef<Path>>(
-    client: &Client,
-    cache_dir: Option<P>,
+#[test]
+fn test_image_cleaned_up() {
+    // From https://palewebserial.wordpress.com/2020/07/09/2-9-spoilers-end-of-the-trail/
+    let doc = Html::parse_fragment(
+        r#"<p><img loading="lazy" class="aligncenter size-full wp-image-2059" src="https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png?w=584&amp;h=161" alt="" srcset="https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png?w=584&amp;h=161 584w, https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png?w=150&amp;h=41 150w, https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png?w=300&amp;h=83 300w, https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png?w=768&amp;h=212 768w, https://palewebserial.files.wordpress.com/2020/07/frt-comic-a.png 797w" sizes="(max-width: 584px) 100vw, 584px" width="584" height="161"></p>"#,
+    );
+    assert_eq!(
+        // Re-parsed because attribute ordering is non-deterministic in XmlSerializer.
+        Html::parse_fragment(r#"<img alt="" width="584" height="161" class="aligncenter size-full wp-image-2059" src="images/2020/07/frt-comic-a.png"></img>"#),
+        Html::parse_fragment(&clean_up_image(&doc.select(&IMAGE_SELECTOR).next().expect("No image found."), "images/2020/07/frt-comic-a.png"))
+    );
+}
+
+type ImageManager = HashMap<Vec<u8>, (String, &'static str)>;
+
+fn download_page(
+    client: &CachedClient,
+    images: &mut ImageManager,
     page_url: &Url,
     skip_cache: bool,
 ) -> Result<(String, String, Option<Url>), Error> {
-    let (page, is_cached) = match cache_dir {
-        // Cache directory exists.
-        Some(ref cache_path) => {
-            let cached_page = cache_path.as_ref().join(page_url.to_string().replace("/", "%2F"));
-            if !skip_cache && cached_page.exists() {
-                let cached_contents = std::fs::read(&cached_page).context(format!("Unable to load {:?} from cache", cached_page))?;
-                (String::from_utf8_lossy(&cached_contents).to_string(), true)
-            } else {
-                let page = fetch(client, page_url)?;
-                std::fs::write(cached_page, &page).context(format!("Could not cache {}", page_url))?;
-                (page, false)
-            }
-        },
-        // No cache directory, fetch directly.
-        None => (fetch(client, page_url)?, false),
-    };
-    let doc = Document::from(page.as_ref());
+    let res = client.fetch::<String>(page_url, skip_cache)?;
+    let is_cached = res.is_cached();
+    let page = res.contents();
+
+    let doc = Html::parse_document(page.as_ref());
 
     // follow redirect if current page uses meta refresh to redirect
-    let redirect = doc.find(Name("meta"))
-                      .filter(|node| {
-                          node.attr("http-equiv") == Some("refresh")
-                      })
-                      .filter_map(|node| {
-                          node.attr("content")
+    let redirect = doc.select(&META_REFRESH_SELECTOR)
+                      .filter_map(|elem| {
+                          elem.value().attr("content")
                       })
                       .flat_map(|content| {
                           content.split(';')
@@ -400,19 +480,14 @@ fn download_page<P: AsRef<Path>>(
         let mut redirect_chars = redirect_url.chars();
         redirect_chars.nth(3); // skip over 'url='
         let page_url = page_url.join(redirect_chars.as_str()).context(format!("Could not resolve url '{}'", redirect_chars.as_str()))?;
-        return download_page(client, cache_dir, &page_url, skip_cache);
+        return download_page(client, images, &page_url, skip_cache);
     }
 
-    let next_page = doc
-        .find(Name("a"))
-        .filter(|x| {
-            x.text().trim() == "Next Chapter" || x.text().trim() == "Next" || x.text().trim() == "ex Chapr" || x.text().trim() == "ext Chapt"
-        })
-        .next();
+    let next_page = doc.select(&NEXT_LINK_SELECTOR).next();
     let mut title = doc
-        .find(Name("title"))
+        .select(&TITLE_SELECTOR)
         .next().ok_or(err_msg("no element named 'title' on page"))?
-        .text()
+        .text().collect::<String>()
         .split("|")
         .next().expect("split on string returned no elements")
         .trim()
@@ -430,17 +505,77 @@ fn download_page<P: AsRef<Path>>(
         println!("Downloaded {title} from {page_url}");
     }
     let content_elems = doc
-        .find(Descendant(
-            And(Name("div"), Class("entry-content")),
-            Or(Name("p"), Name("h1")),
-        ))
-        .filter(|node| node.find(Or(Name("a"), Name("img"))).next().is_none())
-        .map(|elem| "<p".to_string() + &style_classes(elem) + ">" + &fixup_html(elem.inner_html()) + "</p>");
+        .select(&CONTENT_ELEMENT_SELECTOR)
+        .filter(|elem| {
+            // Remove paragraphs which only have text inside links and there is no image.
+            // Those are probably “Next/Previous Chapter” links.
+            // If there is an image, it is probably due to the link’s paragraph being
+            // accidentally smooshed into the paragraph with protagonist image (used e.g. by Pale).
+            // We will tackle that during image handling.
+            elem.select(&IMAGE_SELECTOR).next().is_some()
+            || ! elem.text_filter(|elem| elem.name != html_elem_name("a")).collect::<String>().trim().is_empty()
+        });
 
-    let body_text = content_elems.collect::<Vec<String>>().join("\n");
+    let mut body_text = String::new();
+
+    for elem in content_elems {
+        let mut elem_text = fixup_html(elem.inner_xml());
+
+        let img_elems = elem.select(&IMAGE_SELECTOR);
+
+        let has_single_image = img_elems.clone().count() == 1;
+        let should_replace_paragraph_contents = has_single_image && if let Some(link) = elem.select(&LINK_SELECTOR).next() {
+            // Some Pale chapters (e.g. 18.10) have image paragraphs contaminated with “Next/Previous Chapter” links.
+            // If we detect that happened and there is no text in the paragraph outside the link, let’s keep only the image.
+            elem.text().collect::<String>().trim() == link.text().collect::<String>().trim()
+        } else {
+            false
+        };
+        for img in img_elems {
+            if let Some(src) = img.value().attr("src") {
+                let mut image_url = page_url.join(src).context("Could not resolve image URL")?;
+                // Remove `w` and `h` parameters from query string to download full-size image.
+                image_url.set_query(None);
+
+                let res = client.fetch::<Vec<u8>>(&image_url, false)?;
+                if res.is_cached() {
+                    println!("Found image in cache for {image_url}");
+                } else {
+                    println!("Downloaded image from {image_url}");
+                }
+
+                let contents = res.contents().to_vec();
+
+                // Use prefix otherwise epub_builder will produce invalid ids (starting with a number).
+                let url_path = format!("images{}", image_url.path());
+                let path = if let Some((path, _content_type)) = images.get(&contents) {
+                    // Pale re-uploads the same header image multiple times.
+                    // Let’s use the first image if one with the same contents already exists
+                    // to avoid bloating the EPUB.
+                    println!("Will re-use {path} instead of {image_url} since it is the same.");
+
+                    path
+                } else {
+                    let content_type = MediaType::from_url(&image_url)?.content_type();
+                    images.insert(contents, (url_path.clone(), content_type));
+
+                    &url_path
+                };
+
+                let new_img_html = clean_up_image(&img, path);
+                if should_replace_paragraph_contents {
+                    elem_text = new_img_html;
+                } else {
+                    elem_text = elem_text.replace(&img.xml(), &new_img_html);
+                }
+            }
+        }
+
+        body_text.push_str(&("<p".to_string() + &style_classes(elem) + ">" + &elem_text + "</p>\n"));
+    }
 
     let next_page_url = if let Some(a_element) = next_page {
-        Some(page_url.join(a_element.attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
+        Some(page_url.join(a_element.value().attr("href").ok_or(err_msg("<a> link with name 'next' does not have href attribute"))?).context("Could not resolve url")?)
     } else {
         None
     };
@@ -450,45 +585,62 @@ fn download_page<P: AsRef<Path>>(
     if next_page_url.is_none() && is_cached {
         // If this was a last chapter and it was cached, let’s try to refetch it
         // in case there is a new chapter link available.
-        return download_page(client, cache_dir, page_url, true);
+        return download_page(client, images, page_url, true);
     }
 
     Ok((body_text, title, next_page_url))
 }
 
-fn download_pages<P: AsRef<Path>>(
-    cache_dir: Option<P>,
+fn download_pages(
+    book: &Book,
     mut link: Option<Url>,
     builder: &mut EpubBuilder<ZipLibrary>,
-    client: Client
+    client: CachedClient,
 ) -> Result<(), Error> {
 
-    if let Some(ref cache_path) = cache_dir {
-        create_dir_all(cache_path).context(format!("Could not create cache directory {:?}", cache_path.as_ref()))?;
-    }
-
     let mut chapter_number = 1;
+    let mut images: ImageManager = HashMap::new();
+
     while let Some(page_url) = link {
         let (body_text, title, next_page) = download_page(
             &client,
-            cache_dir.as_ref(),
+            &mut images,
             &page_url,
             false,
         )?;
 
-        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &title + "</title><meta http-equiv='Content-Type' content ='text/html' /><!-- ePub title: \"" + &title + "\" -->\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &title + "</h1>\n" + &body_text + "</body></html>";
+        link = next_page;
 
-        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title).reftype(ReferenceType::Text))
+        if title.starts_with("Glow-worm") && book.title == "Ward" {
+            // Glow-worm is also at the beginning of Ward.
+            println!("Skipping {title} since it is available separately.");
+            continue;
+        }
+
+        let escaped_title = html_escape::encode_text(&title);
+        let cont = "<?xml version='1.0' encoding='utf-8' ?><html xmlns='http://www.w3.org/1999/xhtml'><head><title>".to_string() + &escaped_title + "</title><meta http-equiv='Content-Type' content ='text/html; charset=utf-8' />\n<link rel='stylesheet' type='text/css' href='stylesheet.css' />\n</head><body><h1>" + &escaped_title + "</h1>\n" + &body_text + "</body></html>";
+
+        // Title here should not need to be escaped but unfortunately,
+        // without this the nav.xhtml will contain unescaped &.
+        // And we cannot just escape it ourseves or it will be double escaped in toc.ncx.
+        // Let’s replace it with small ampersand Unicode character.
+        // https://github.com/lise-henry/epub-builder/pull/41
+        let title_clean = title.replace("&", "﹠");
+        builder.add_content(EpubContent::new(format!("chapter_{}.xhtml", chapter_number), cont.as_bytes()).title(&title_clean).reftype(ReferenceType::Text))
                .context("Could not add chapter")?;
 
-        if title == "P.9" {
+        if Some(title) == book.final_chapter_title.map(|title| title.to_string()) {
+            // Stop after the final chapter to avoid including e.g. retrospectives.
             break;
         }
 
-        link = next_page;
-
         chapter_number += 1
     }
+
+    for (image, (name, content_type)) in images {
+        builder.add_resource(&name, &*image, content_type).context(format!("Could not add image {name}"))?;
+    }
+
     Ok(())
 }
 
