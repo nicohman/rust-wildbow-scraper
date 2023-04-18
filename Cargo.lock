@@ -1415,7 +1415,6 @@ dependencies = [
  "html5ever",
  "lazy_static",
  "markup5ever",
- "regex",
  "reqwest",
  "scraper",
  "structopt",

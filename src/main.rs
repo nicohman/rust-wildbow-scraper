@@ -6,7 +6,6 @@ extern crate epub_builder;
 extern crate html5ever;
 extern crate html_escape;
 extern crate markup5ever;
-extern crate regex;
 extern crate reqwest;
 extern crate scraper;
 extern crate easy_error;
@@ -22,7 +21,6 @@ use html5ever::tree_builder::{Attribute, ElementFlags, NodeOrText, TreeSink};
 use structopt::StructOpt;
 use directories::ProjectDirs;
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
-use regex::{Regex, Captures};
 use reqwest::Url;
 use scraper::{ElementRef, Html, Selector};
 use std::fs::File;
@@ -363,17 +361,6 @@ fn style_classes(input: ElementRef) -> String {
     }
 }
 
-// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
-// javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
-//   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
-// Our input generally isn't valid XML, and there don't seem to be any HTML parsing libraries
-// that allow for easy mutation, so let's just fix this up with a regex.
-lazy_static! {
-    static ref CLOUDFLARE_EMAIL_REGEX: Regex = Regex::new(
-        r#"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="([^"]+)">\[email.*protected\]</a>"#,
-    ).unwrap();
-}
-
 lazy_static! {
     static ref META_REFRESH_SELECTOR: Selector = Selector::parse(r#"meta[http-equiv="refresh"]"#).unwrap();
     static ref CONTENT_ELEMENT_SELECTOR: Selector = Selector::parse("div.entry-content p, div.entry-content h1").unwrap();
@@ -381,11 +368,15 @@ lazy_static! {
     static ref NEXT_LINK_SELECTOR: Selector = Selector::parse(r#"a[rel="next"]"#).unwrap();
     static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
     static ref IMAGE_SELECTOR: Selector = Selector::parse("img").unwrap();
+    static ref CLOUDFLARE_EMAIL_SELECTOR: Selector = Selector::parse("a.__cf_email__[data-cfemail]").unwrap();
 }
 
-fn fixup_html(input: String) -> String {
-    CLOUDFLARE_EMAIL_REGEX.replace_all(&input, |captures: &Captures| {
-        let data = captures.get(1).unwrap().as_str();
+/// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
+/// javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
+///   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
+fn fix_cloudflare_links(doc: &mut Html) {
+    let cloudflare_links: Vec<(<Html as TreeSink>::Handle, String)> = doc.select(&CLOUDFLARE_EMAIL_SELECTOR).map(|elem| {
+        let data = elem.value().attr("data-cfemail").unwrap();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() >= 4, "mangled email data not long enough");
         let key = bytes[0];
@@ -394,8 +385,13 @@ fn fixup_html(input: String) -> String {
             .map(|byte| byte ^ key)
             .collect::<Vec<u8>>();
 
-        std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").to_string()
-    }).to_string()
+        (elem.id(), std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").to_string())
+    }).collect();
+
+    for (node_id, email) in cloudflare_links {
+        doc.append_before_sibling(&node_id, NodeOrText::AppendText(email.into()));
+        doc.remove_from_parent(&node_id);
+    }
 }
 
 /// Creates a copy of given image element with cleaned up attributes.
@@ -519,7 +515,9 @@ fn download_page(
     let mut body_text = String::new();
 
     for elem in content_elems {
-        let mut elem_text = fixup_html(elem.inner_xml());
+        let mut doc = Html::parse_fragment(&elem.inner_xml());
+        fix_cloudflare_links(&mut doc);
+        let mut elem_text = doc.root_element().inner_xml();
 
         let img_elems = elem.select(&IMAGE_SELECTOR);
 
