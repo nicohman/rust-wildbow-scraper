@@ -14,9 +14,11 @@ extern crate lazy_static;
 extern crate xml5ever;
 
 mod cached_client;
+mod dom_manipulation;
 mod xml_utils;
 
 use cached_client::CachedClient;
+use dom_manipulation::{DomOperation, MutableDom};
 use html5ever::tree_builder::{Attribute, ElementFlags, NodeOrText, TreeSink};
 use structopt::StructOpt;
 use directories::ProjectDirs;
@@ -375,7 +377,7 @@ lazy_static! {
 /// javascript on the client. For example, 'Point_Me_@_The_Sky' turns into:
 ///   '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="...">[email&nbsp;protected]</a>_The_Sky'
 fn fix_cloudflare_links(doc: &mut Html) {
-    let cloudflare_links: Vec<(<Html as TreeSink>::Handle, String)> = doc.select(&CLOUDFLARE_EMAIL_SELECTOR).map(|elem| {
+    let cloudflare_links = doc.select(&CLOUDFLARE_EMAIL_SELECTOR).map(|elem| {
         let data = elem.value().attr("data-cfemail").unwrap();
         let bytes = hex::decode(data).expect("mangled email data is not a hex string");
         assert!(bytes.len() >= 4, "mangled email data not long enough");
@@ -385,13 +387,13 @@ fn fix_cloudflare_links(doc: &mut Html) {
             .map(|byte| byte ^ key)
             .collect::<Vec<u8>>();
 
-        (elem.id(), std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").to_string())
+        DomOperation::ReplaceElement {
+            node_id: elem.id(),
+            replacement: NodeOrText::AppendText(std::str::from_utf8(&decoded).expect("decoded email isn't a UTF-8 string").into()),
+        }
     }).collect();
 
-    for (node_id, email) in cloudflare_links {
-        doc.append_before_sibling(&node_id, NodeOrText::AppendText(email.into()));
-        doc.remove_from_parent(&node_id);
-    }
+    doc.perform_operations(cloudflare_links);
 }
 
 /// Creates a copy of given image element with cleaned up attributes.
