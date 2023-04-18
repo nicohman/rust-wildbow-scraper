@@ -33,6 +33,11 @@ pub(crate) enum DomOperation<Handle> {
         node_id: Handle,
         replacement: NodeOrText<Handle>,
     },
+    /// Replaces element with `node_id` by its children,
+    /// essentially removing the element’s opening and closing tags.
+    DissolveElement {
+        node_id: Handle,
+    },
 }
 
 pub(crate) trait MutableDom: TreeSink {
@@ -86,6 +91,20 @@ impl MutableDom for Html {
             }
             DomOperation::ReplaceElement { node_id, replacement } => {
                 self.append_before_sibling(&node_id, replacement);
+                self.remove_from_parent(&node_id);
+            }
+            DomOperation::DissolveElement { node_id } => {
+                let mut child_ids = Vec::new();
+                if let Some(node) = self.tree.get(node_id) {
+                    for child in node.children() {
+                        child_ids.push(child.id());
+                    }
+                }
+
+                for id in child_ids {
+                    self.append_before_sibling(&node_id, NodeOrText::AppendNode(id));
+                }
+
                 self.remove_from_parent(&node_id);
             }
         }
@@ -185,6 +204,21 @@ fn test_replace_element() {
 
     assert_eq!(
         Html::parse_fragment("<em>Emphasis</em> Foo <del>Wrong</del>"),
+        Html::parse_fragment(&doc.root_element().inner_html()),
+    );
+}
+
+#[test]
+fn test_dissolve_element() {
+    let mut doc = Html::parse_fragment("<div><p class='nop'><em>Foo</em></p><p class='figure'><em>Empha<strong title='secret'>sis</strong></em> <strong>Bold</strong></p> <a href='#'>After</a></div>");
+    let figure = doc.select(&Selector::parse(".figure").unwrap()).next().expect("Figure not found.");
+
+    doc.perform_operation(DomOperation::DissolveElement {
+        node_id: figure.id(),
+    });
+
+    assert_eq!(
+        Html::parse_fragment("<div><p class='nop'><em>Foo</em></p><em>Empha<strong title='secret'>sis</strong></em> <strong>Bold</strong> <a href='#'>After</a></div>"),
         Html::parse_fragment(&doc.root_element().inner_html()),
     );
 }

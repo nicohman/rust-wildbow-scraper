@@ -371,6 +371,7 @@ lazy_static! {
     static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
     static ref IMAGE_SELECTOR: Selector = Selector::parse("img").unwrap();
     static ref CLOUDFLARE_EMAIL_SELECTOR: Selector = Selector::parse("a.__cf_email__[data-cfemail]").unwrap();
+    static ref USELESS_SPAN_SELECTOR: Selector = Selector::parse("span:not([class]):not([style])").unwrap();
 }
 
 /// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
@@ -505,6 +506,22 @@ fn clean_up_images(
     Ok(())
 }
 
+/// Removes spans that are not used for styling the content
+/// such as various junk inserted by WordPress’s editor.
+fn remove_useless_spans(doc: &mut Html) {
+    let useless_spans = doc.select(&USELESS_SPAN_SELECTOR);
+
+    let mut ops = Vec::new();
+
+    for span in useless_spans {
+        ops.push(DomOperation::DissolveElement {
+            node_id: span.id(),
+        })
+    }
+
+    doc.perform_operations(ops);
+}
+
 fn download_page(
     client: &CachedClient,
     images: &mut ImageManager,
@@ -580,6 +597,7 @@ fn download_page(
             images,
             page_url,
         )?;
+        remove_useless_spans(&mut doc);
         let elem_text = doc.root_element().inner_xml();
 
         body_text.push_str(&("<p".to_string() + &style_classes(elem) + ">" + &elem_text + "</p>\n"));
