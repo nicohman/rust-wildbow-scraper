@@ -33,6 +33,7 @@ use std::io::Write;
 use std::path::Path;
 use easy_error::{ResultExt, Error, err_msg};
 use xml_utils::{FilterableTree, html_attr_name, html_elem_name, XmlSerializable};
+use std::path::PathBuf;
 
 lazy_static! {
     static ref NEXT_LINK_OVERRIDES: HashMap<String, Url> = HashMap::from([
@@ -73,6 +74,8 @@ struct Args {
 	/// Scrape them all?
 	#[structopt(short, long)]
 	all: bool,
+    #[structopt(short, long)]
+    output: Option<PathBuf>,
 	/// get covers? Default is to prompt for each book
 	#[structopt(short, long)]
 	covers: Option<bool>,
@@ -211,7 +214,7 @@ fn interpret_args() -> Result<(), Error> {
     // an anonymous function which adds the book with name name to books if requested is true
     let add_book = |name, requested| {
         if requested {
-            process_book(download_book(cache_dir, name, args.covers)?)?;
+            process_book(download_book(cache_dir, name, args.covers)?, args.output.clone())?;
         }
         let result: Result<(), Error> = Ok(());
         result
@@ -644,11 +647,11 @@ fn download_pages(
     Ok(())
 }
 
-fn process_book(mut book: DownloadedBook) -> Result<(), Error> {
+fn process_book(mut book: DownloadedBook, output_folder: Option<PathBuf>) -> Result<(), Error> {
     println!("Done downloading {}", book.title);
     let filename = book.title.to_lowercase();
     println!("Converting to epub now at {}.epub", filename);
-    let mut zipfile = File::create(filename + ".epub").context("Could not open file")?;
+    let mut zipfile = File::create(output_folder.unwrap_or_default().join(filename+ ".epub")).context("Could not open file")?;
     book.builder.generate(&mut zipfile).context("Could not generate ebook")?;
     println!("Done downloading {}", book.title);
     Ok(())
