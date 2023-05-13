@@ -300,7 +300,9 @@ fn download_book<P: AsRef<Path>>(
 }
 
 fn style_classes(input: ElementRef) -> String {
-    let mut properties = if let Some(style) = input.value().attr("style") {
+    let mut attrs: HashMap<&str, &str> = input.value().attrs().collect();
+
+    let mut properties = if let Some(style) = attrs.remove("style") {
         let parsed: Vec<(&str, &str)> = style.split(";")
             .map(|property|
                 property
@@ -335,7 +337,9 @@ fn style_classes(input: ElementRef) -> String {
         }
     }
 
-    if let Some(text_align) = properties.remove("text-align") {
+    let align = attrs.remove("align").map(|align| align.to_lowercase());
+
+    if let Some(text_align) = properties.remove("text-align").map(String::from).or(align) {
         if text_align == "center" {
             // Separator ☙ in https://twigserial.wordpress.com/2016/12/17/bitter-pill-15-15/
             // Separator ■ in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
@@ -359,11 +363,46 @@ fn style_classes(input: ElementRef) -> String {
         }
     }
 
+    // dir=ltr is the default and there probably will not be any right-to-left text.
+    // https://pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/
+    attrs.remove("dir");
+
+    if !attrs.is_empty() {
+        println!("Warning: Unhandled attributes:");
+        for (name, value) in attrs {
+            println!("  {name}={value:?}")
+        }
+    }
+
     if classes.is_empty() {
         "".to_string()
     } else {
         " class=\"".to_string() + &classes.join(" ") + "\""
     }
+}
+
+#[test]
+fn test_style_classes() {
+    let p_selector = Selector::parse("p").unwrap();
+
+    let example = Html::parse_document(r#"<body><p style="text-align:center;">Test</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), r#" class="center""#);
+
+    let example = Html::parse_document(r#"<body><p style="text-align:right;">Test</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), r#" class="right""#);
+
+    let example = Html::parse_document(r#"<body><p style="text-align:left;">Test</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), "");
+
+    // https://parahumans.wordpress.com/category/stories-arcs-1-10/arc-8-extermination/8-x-bonus-interlude/
+    let example = Html::parse_document(r#"<body><p style="text-align:left;" align="CENTER">Test</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), r#""#);
+
+    let example = Html::parse_document(r#"<body><p style="padding-left:30px;" align="LEFT">Test.</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), r#" class="indent-one""#);
+
+    let example = Html::parse_document(r#"<body><p align="CENTER">■</p></body>"#);
+    assert_eq!(style_classes(example.select(&p_selector).next().unwrap()), r#" class="center""#);
 }
 
 lazy_static! {
