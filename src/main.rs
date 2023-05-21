@@ -413,7 +413,7 @@ lazy_static! {
     static ref TITLE_SELECTOR: Selector = Selector::parse("title").unwrap();
     static ref IMAGE_SELECTOR: Selector = Selector::parse("img").unwrap();
     static ref CLOUDFLARE_EMAIL_SELECTOR: Selector = Selector::parse("a.__cf_email__[data-cfemail]").unwrap();
-    static ref USELESS_SPAN_SELECTOR: Selector = Selector::parse("span:not([class]):not([style])").unwrap();
+    static ref USELESS_SPAN_SELECTOR: Selector = Selector::parse(r#"span:not([class]):not([style]), span.short_text[id="result_box"], span.short_text[id="result_box"] span.hps"#).unwrap();
 }
 
 /// Cloudflare mangles anything even vaguely resembling an email into a string that's decoded by
@@ -562,6 +562,19 @@ fn remove_useless_spans(doc: &mut Html) {
     }
 
     doc.perform_operations(ops);
+}
+
+#[test]
+fn test_useless_span_removal() {
+    // Likely created by copying from Translator.
+    // https://pactwebserial.wordpress.com/2014/04/03/collateral-4-12/
+    let mut example = Html::parse_fragment(r#"<p>“<span id="result_box" class="short_text" lang="ga"><span class="hps">Comhroinn</span> </span><span id="result_box" class="short_text" lang="ga"><span class="hps">liom</span></span><em><span id="result_box" class="short_text" lang="ga">,</span></em>” the woman rasped.</p>"#);
+    remove_useless_spans(&mut example);
+
+    assert_eq!(
+        Html::parse_fragment("<p>“Comhroinn liom<em>,</em>” the woman rasped.</p>"),
+        Html::parse_fragment(&example.root_element().inner_html()),
+    );
 }
 
 fn download_page(
