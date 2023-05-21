@@ -103,7 +103,7 @@ fn get_info(key: &str) -> Option<Book> {
         },
         "pact" => Book {
             title: "Pact",
-            start: "https://pactwebserial.wordpress.com/category/story/arc-1-bonds/1-01/",
+            start: "https://pactwebserial.wordpress.com/2013/12/17/bonds-1-1/",
             desc: 
                 "Blake Thorburn was driven away from home and family by a vicious fight over inheritance, returning only for a deathbed visit with the grandmother who set it in motion. Blake soon finds himself next in line to inherit the property, a trove of dark supernatural knowledge, and the many enemies his grandmother left behind her in the small town of Jacob’s Bell.",
             date: "Sat, 07 Mar 2015 00:00:00 +0100",
