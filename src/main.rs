@@ -71,6 +71,8 @@ struct Args {
 	/// scrape Pale?
 	#[structopt(short="l", long)]
 	pale: bool,
+    #[structopt(short="c", long)]
+    claw: bool, 
 	/// Scrape them all?
 	#[structopt(short, long)]
 	all: bool,
@@ -144,6 +146,14 @@ fn get_info(key: &str) -> Option<Book> {
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
             final_chapter_title: None,
+        },
+        "claw" => Book {
+            title: "Claw",
+            start: "https://clawwebserial.blog/2024/03/09/the-point-1-1/",
+            desc: "Joshua Munce, Sheila Hardy, Dan Whitely, Max Highland, Tonya Keifer, Marvin Su… this pair has many names, but those names aren’t their own; they’re names to sell.  In a rigged and crumbling system, the only way to get ahead is to circumvent the rules, but that comes with its own risks.  Police, investigations, prison.  There are other ways, more insulated, which are to play assist to help those people.  Helping them to disappear, cleaning up messes, escrow services for the handling of good, payment, or guests.  Always keeping it professional, keeping things insulated, with layers of distance.  When others panic, with too many variables to consider in the heat of the moment, they can do the thinking.  Who would suspect this mom and dad with two kids?",
+            date: "Tue, 09 Mar 2024 00:00:00 +0100",
+            cover: None,
+            final_chapter_title: Some("Loose Ends – E.6"),
         },
         _ => return None,
     });
@@ -223,6 +233,7 @@ fn interpret_args() -> Result<(), Error> {
     add_book("ward", args.ward || args.all)?;
     add_book("pact", args.pact || args.all)?;
     add_book("pale", args.pale || args.all)?;
+    add_book("claw", args.claw || args.all)?;
     add_book("glow", args.glow_worm || args.all)?;
     add_book("twig", args.twig || args.all)
 }
