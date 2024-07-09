@@ -56,10 +56,10 @@ struct Args {
 	/// Scrape Worm?
 	#[structopt(short, long)]
 	worm: bool,
-	/// scrape Pact?
+	/// Scrape Pact?
 	#[structopt(short, long)]
 	pact: bool,
-	/// scrape Twig?
+	/// Scrape Twig?
 	#[structopt(short, long)]
 	twig: bool,
 	/// Scrape Glow Worm?
@@ -68,17 +68,19 @@ struct Args {
 	/// Scrape Ward?
 	#[structopt(short="r", long)]
 	ward: bool,
-	/// scrape Pale?
+	/// Scrape Pale?
 	#[structopt(short="l", long)]
 	pale: bool,
-    #[structopt(short="c", long)]
+    /// Scrape Claw?
+    #[structopt(short="x", long)]
     claw: bool, 
 	/// Scrape them all?
 	#[structopt(short, long)]
 	all: bool,
+    /// Different output path? Default is present working directory
     #[structopt(short, long)]
     output: Option<PathBuf>,
-	/// get covers? Default is to prompt for each book
+	/// Get covers? Default is to prompt for each book
 	#[structopt(short, long)]
 	covers: Option<bool>,
 }
