@@ -11,6 +11,7 @@ Automatically scrapes wildbow's web serials and compiles them into ebooks
 - Ward
 - Pale
 - Claw
+- Seek
 
 ## Installation
 
@@ -41,6 +42,7 @@ FLAGS:
     -h, --help         Prints help information
     -p, --pact         Scrape Pact?
     -l, --pale         Scrape Pale?
+    -s, --seek         Scrape Seek?
     -t, --twig         Scrape Twig?
     -V, --version      Prints version information
     -r, --ward         Scrape Ward?
