@@ -52,14 +52,17 @@ struct Book {
 
 /// scrapes books written by Wildbow like Worm, Ward, Twig ETC and converts it to EPUB format.
 #[derive(StructOpt)]
+#[structopt(
+    global_settings = &[structopt::clap::AppSettings::ArgRequiredElseHelp]
+)]
 struct Args {
 	/// Scrape Worm?
 	#[structopt(short, long)]
 	worm: bool,
-	/// scrape Pact?
+	/// Scrape Pact?
 	#[structopt(short, long)]
 	pact: bool,
-	/// scrape Twig?
+	/// Scrape Twig?
 	#[structopt(short, long)]
 	twig: bool,
 	/// Scrape Glow Worm?
@@ -68,17 +71,22 @@ struct Args {
 	/// Scrape Ward?
 	#[structopt(short="r", long)]
 	ward: bool,
-	/// scrape Pale?
+	/// Scrape Pale?
 	#[structopt(short="l", long)]
 	pale: bool,
-    #[structopt(short="c", long)]
+    /// Scrape Claw?
+    #[structopt(short="x", long)]
     claw: bool, 
+    /// Scrape Seek?
+    #[structopt(short="s", long)]
+    seek: bool,
 	/// Scrape them all?
 	#[structopt(short, long)]
 	all: bool,
+    /// Different output path? Default is present working directory
     #[structopt(short, long)]
     output: Option<PathBuf>,
-	/// get covers? Default is to prompt for each book
+	/// Get covers? Default is to prompt for each book
 	#[structopt(short, long)]
 	covers: Option<bool>,
 }
@@ -145,7 +153,7 @@ fn get_info(key: &str) -> Option<Book> {
             desc: "There are ways of being inducted into the practices, those esoteric traditions that predate computers, cell phones, the engines industry, and even paper and bronze.  Make the right deals, learn the right words to say or symbols to write down, and you can make the wind listen to you, exchange your skin for that of a serpent, or call forth the sorts of monsters that appear in horror movies.",
             date: "Tue, 05 May 2020 00:00:00 +0100",
             cover: Some("https://i.redd.it/xnp5vvxvnr471.png"),
-            final_chapter_title: None,
+            final_chapter_title: Some("Loose Ends – E.6"),
         },
         "claw" => Book {
             title: "Claw",
@@ -153,7 +161,15 @@ fn get_info(key: &str) -> Option<Book> {
             desc: "Joshua Munce, Sheila Hardy, Dan Whitely, Max Highland, Tonya Keifer, Marvin Su… this pair has many names, but those names aren’t their own; they’re names to sell.  In a rigged and crumbling system, the only way to get ahead is to circumvent the rules, but that comes with its own risks.  Police, investigations, prison.  There are other ways, more insulated, which are to play assist to help those people.  Helping them to disappear, cleaning up messes, escrow services for the handling of good, payment, or guests.  Always keeping it professional, keeping things insulated, with layers of distance.  When others panic, with too many variables to consider in the heat of the moment, they can do the thinking.  Who would suspect this mom and dad with two kids?",
             date: "Tue, 09 Mar 2024 00:00:00 +0100",
             cover: None,
-            final_chapter_title: Some("Loose Ends – E.6"),
+            final_chapter_title: Some("Bear – 6.6"),
+        },
+        "seek" => Book {
+            title: "Seek",
+            start: "https://seekwebserial.wordpress.com/2024/10/18/0-1-0-hack/",
+            desc: "Despite our best efforts, few survived faster than light travel.  None survived the trip back.  So we took a different approach altogether.  We started bringing the universe to us. There’s no point.  What hasn’t changed in the last four hundred years won’t change in our lifetimes. There’s no point.  We’ve solved it.  Everything humanity needs, it has.  We’ve reached the finish line. There’s no point.  Turn off the lights, close your eyes, and cover your ears, nightmares come manifest.Three storylines from three individuals, worlds and eras apart.",
+            date: "Fri, 18 Oct 2024 00:00:00 +0100",
+            cover: None,
+            final_chapter_title: None,
         },
         _ => return None,
     });
@@ -235,7 +251,8 @@ fn interpret_args() -> Result<(), Error> {
     add_book("pale", args.pale || args.all)?;
     add_book("claw", args.claw || args.all)?;
     add_book("glow", args.glow_worm || args.all)?;
-    add_book("twig", args.twig || args.all)
+    add_book("twig", args.twig || args.all)?;
+    add_book("seek", args.seek || args.all)
 }
 
 fn download_book<P: AsRef<Path>>(
@@ -356,6 +373,7 @@ fn style_classes(input: ElementRef) -> String {
             // Separator ■ in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/
             // Separator 🟂 in https://palewebserial.wordpress.com/2020/05/30/lost-for-words-1-7/
             // Separator ⊙ in https://www.parahumans.net/2019/03/12/heavens-12-f/
+            // Seperator ➨ in https://seekwebserial.wordpress.com/2024/10/27/0-3-w-hack/
             classes.push("center");
         } else if text_align == "right" {
             // Quote attribution in https://pactwebserial.wordpress.com/category/story/arc-7-void/7-x-histories/

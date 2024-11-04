@@ -10,6 +10,7 @@ Automatically scrapes wildbow's web serials and compiles them into ebooks
 - Glow-worm
 - Ward
 - Pale
+- Claw
 
 ## Installation
 
@@ -35,17 +36,19 @@ USAGE:
 
 FLAGS:
     -a, --all          Scrape them all?
+    -x, --claw         Scrape Claw?
     -g, --glow-worm    Scrape Glow Worm?
     -h, --help         Prints help information
-    -p, --pact         scrape Pact?
-    -l, --pale         scrape Pale?
-    -t, --twig         scrape Twig?
+    -p, --pact         Scrape Pact?
+    -l, --pale         Scrape Pale?
+    -t, --twig         Scrape Twig?
     -V, --version      Prints version information
     -r, --ward         Scrape Ward?
     -w, --worm         Scrape Worm?
 
 OPTIONS:
-    -c, --covers <covers>    get covers? Default is to prompt for each book
+    -c, --covers <covers>    Get covers? Default is to prompt for each book
+    -o, --output <output>    Different output path? Default is present working directory
 ```
 
 When scraping a book, it'll ask you if you want to include a cover. These are fanart covers and not made or associated with me in any way. The program automatically downloads them from other places and does not have them included.
